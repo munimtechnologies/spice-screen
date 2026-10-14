@@ -167,4 +167,4 @@ Made by MV2 of Munim, Inc. The code was produced with AI agents working in his n
 published in the open. Corrections, new markers (with sources) and real spectra shared under
 an open licence are welcome as issues or pull requests.
 
-MIT license. Contact: munimversion2@gmail.com
+Apache-2.0 license. Contact: munimversion2@gmail.com

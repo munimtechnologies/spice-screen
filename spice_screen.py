@@ -24,7 +24,7 @@ Usage:
     python spice_screen.py --list                        # marker library with sources
     python spice_screen.py --demo                        # synthetic example
 
-Made by MV2 of Munim, Inc. with AI agents working in his name. MIT licence.
+Made by MV2 of Munim, Inc. with AI agents working in his name. Apache-2.0 licence.
 """
 from __future__ import annotations
 

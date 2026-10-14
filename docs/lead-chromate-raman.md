@@ -75,5 +75,5 @@ screen-positive, and a resolved triplet is reported band by band.
 
 Prepared by MV2 of Munim, Inc. This document and the spice-screen project are produced
 with AI agents working in MV2's name; the Raman band positions and assignments are
-taken from the cited peer-reviewed sources, not generated. MIT license. Contact:
+taken from the cited peer-reviewed sources, not generated. Apache-2.0 license. Contact:
 munimversion2@gmail.com
