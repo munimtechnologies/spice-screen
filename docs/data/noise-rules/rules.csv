@@ -1,0 +1,61 @@
+noise,snr_min,rel_min,crocoite_pos,crocoite_n,other_cr_pos,other_cr_n,non_cr_pos,non_cr_n,non_cr_rate,non_cr_pb_pos,filler_pos,fillers_flagged,top_groups
+diff,5.0,0.0,9,9,27,63,1512,5713,0.2647,153,49,Albite; Anatase; Aragonite; Baryte; Calcite; Dolomite; Fluorapatite; Goethite; Gypsum; Hematite; Magnetite; Microcline; Muscovite; Orthoclase; Talc,silicate 419; other 264; phosphorus-bearing 225; arsenic-bearing 192; sulfur-bearing 189
+diff,5.0,0.01,9,9,25,63,871,5713,0.1525,103,16,Albite; Fluorapatite; Hematite; Magnetite; Microcline; Muscovite; Orthoclase; Talc,silicate 277; arsenic-bearing 142; other 134; phosphorus-bearing 112; sulfur-bearing 74
+diff,5.0,0.03,9,9,22,63,548,5713,0.0959,56,11,Fluorapatite; Hematite; Magnetite; Microcline; Muscovite; Orthoclase; Talc,silicate 174; arsenic-bearing 134; other 85; phosphorus-bearing 62; vanadium-bearing 26
+diff,5.0,0.05,9,9,21,63,443,5713,0.0775,46,5,Fluorapatite; Hematite; Magnetite; Microcline,silicate 133; arsenic-bearing 130; other 67; phosphorus-bearing 43; vanadium-bearing 25
+diff,5.0,0.1,9,9,21,63,346,5713,0.0606,42,1,Magnetite,arsenic-bearing 128; silicate 103; other 39; phosphorus-bearing 30; vanadium-bearing 23
+diff,8.0,0.0,9,9,24,63,1003,5713,0.1756,110,24,Albite; Baryte; Calcite; Fluorapatite; Goethite; Gypsum; Hematite; Magnetite; Muscovite; Orthoclase,silicate 296; phosphorus-bearing 161; other 160; arsenic-bearing 149; carbon-bearing 91
+diff,8.0,0.01,9,9,22,63,713,5713,0.1248,83,12,Albite; Fluorapatite; Hematite; Magnetite; Muscovite; Orthoclase,silicate 230; arsenic-bearing 125; other 109; phosphorus-bearing 93; carbon-bearing 58
+diff,8.0,0.03,9,9,21,63,501,5713,0.0877,48,8,Fluorapatite; Hematite; Magnetite; Muscovite; Orthoclase,silicate 158; arsenic-bearing 125; other 75; phosphorus-bearing 57; vanadium-bearing 26
+diff,8.0,0.05,9,9,21,63,417,5713,0.073,44,3,Fluorapatite; Hematite; Magnetite,arsenic-bearing 124; silicate 124; other 61; phosphorus-bearing 41; vanadium-bearing 25
+diff,8.0,0.1,9,9,21,63,335,5713,0.0586,40,1,Magnetite,arsenic-bearing 124; silicate 98; other 37; phosphorus-bearing 30; vanadium-bearing 23
+diff,10.0,0.0,9,9,23,63,840,5713,0.147,97,16,Albite; Baryte; Calcite; Fluorapatite; Hematite; Magnetite; Muscovite; Orthoclase,silicate 256; arsenic-bearing 138; phosphorus-bearing 133; other 127; carbon-bearing 73
+diff,10.0,0.01,9,9,22,63,641,5713,0.1122,78,11,Albite; Fluorapatite; Hematite; Magnetite; Muscovite; Orthoclase,silicate 207; arsenic-bearing 125; other 92; phosphorus-bearing 81; carbon-bearing 53
+diff,10.0,0.03,9,9,21,63,467,5713,0.0817,48,8,Fluorapatite; Hematite; Magnetite; Muscovite; Orthoclase,silicate 147; arsenic-bearing 125; other 67; phosphorus-bearing 50; vanadium-bearing 26
+diff,10.0,0.05,9,9,21,63,400,5713,0.07,44,3,Fluorapatite; Hematite; Magnetite,arsenic-bearing 124; silicate 120; other 56; phosphorus-bearing 38; vanadium-bearing 25
+diff,10.0,0.1,9,9,21,63,328,5713,0.0574,40,1,Magnetite,arsenic-bearing 124; silicate 96; other 36; phosphorus-bearing 27; vanadium-bearing 23
+diff,20.0,0.0,9,9,19,63,521,5713,0.0912,70,4,Fluorapatite; Muscovite,silicate 154; arsenic-bearing 116; other 74; phosphorus-bearing 58; carbon-bearing 46
+diff,20.0,0.01,9,9,19,63,473,5713,0.0828,64,4,Fluorapatite; Muscovite,silicate 145; arsenic-bearing 115; other 65; phosphorus-bearing 42; carbon-bearing 40
+diff,20.0,0.03,9,9,19,63,381,5713,0.0667,42,4,Fluorapatite; Muscovite,arsenic-bearing 115; silicate 115; other 51; phosphorus-bearing 32; vanadium-bearing 24
+diff,20.0,0.05,9,9,19,63,341,5713,0.0597,39,1,Fluorapatite,arsenic-bearing 114; silicate 97; other 46; phosphorus-bearing 25; vanadium-bearing 24
+diff,20.0,0.1,9,9,19,63,291,5713,0.0509,36,0,,arsenic-bearing 114; silicate 82; other 32; vanadium-bearing 22; phosphorus-bearing 19
+scatter,5.0,0.0,8,9,8,63,322,5713,0.0564,54,1,Muscovite,silicate 88; arsenic-bearing 77; other 43; carbon-bearing 41; vanadium-bearing 23
+scatter,5.0,0.01,8,9,8,63,293,5713,0.0513,51,1,Muscovite,silicate 81; arsenic-bearing 75; other 39; carbon-bearing 37; vanadium-bearing 23
+scatter,5.0,0.03,8,9,8,63,238,5713,0.0417,33,1,Muscovite,arsenic-bearing 75; silicate 64; other 35; vanadium-bearing 20; carbon-bearing 15
+scatter,5.0,0.05,8,9,8,63,218,5713,0.0382,30,0,,arsenic-bearing 75; silicate 55; other 32; vanadium-bearing 20; carbon-bearing 10
+scatter,5.0,0.1,8,9,8,63,186,5713,0.0326,27,0,,arsenic-bearing 75; silicate 46; vanadium-bearing 20; other 20; phosphorus-bearing 8
+scatter,8.0,0.0,6,9,6,63,184,5713,0.0322,33,0,,silicate 56; arsenic-bearing 37; carbon-bearing 33; other 21; vanadium-bearing 15
+scatter,8.0,0.01,6,9,6,63,178,5713,0.0312,31,0,,silicate 55; arsenic-bearing 37; carbon-bearing 31; other 18; vanadium-bearing 15
+scatter,8.0,0.03,6,9,6,63,144,5713,0.0252,16,0,,silicate 44; arsenic-bearing 37; other 17; vanadium-bearing 14; carbon-bearing 13
+scatter,8.0,0.05,6,9,6,63,133,5713,0.0233,13,0,,silicate 38; arsenic-bearing 37; other 16; vanadium-bearing 14; phosphorus-bearing 9
+scatter,8.0,0.1,6,9,6,63,118,5713,0.0207,10,0,,arsenic-bearing 37; silicate 35; vanadium-bearing 14; other 13; phosphorus-bearing 7
+scatter,10.0,0.0,6,9,4,63,130,5713,0.0228,28,0,,silicate 40; carbon-bearing 30; arsenic-bearing 24; other 12; vanadium-bearing 10
+scatter,10.0,0.01,6,9,4,63,126,5713,0.0221,26,0,,silicate 39; carbon-bearing 29; arsenic-bearing 24; vanadium-bearing 10; other 10
+scatter,10.0,0.03,6,9,4,63,98,5713,0.0172,12,0,,silicate 30; arsenic-bearing 24; carbon-bearing 12; vanadium-bearing 10; other 10
+scatter,10.0,0.05,6,9,4,63,88,5713,0.0154,9,0,,arsenic-bearing 24; silicate 24; vanadium-bearing 10; other 10; carbon-bearing 8
+scatter,10.0,0.1,6,9,4,63,78,5713,0.0137,6,0,,arsenic-bearing 24; silicate 22; vanadium-bearing 10; other 9; sulfur-bearing 6
+scatter,20.0,0.0,0,9,0,63,39,5713,0.0068,20,0,,carbon-bearing 20; silicate 5; arsenic-bearing 4; sulfur-bearing 3; other 3
+scatter,20.0,0.01,0,9,0,63,39,5713,0.0068,20,0,,carbon-bearing 20; silicate 5; arsenic-bearing 4; sulfur-bearing 3; other 3
+scatter,20.0,0.03,0,9,0,63,24,5713,0.0042,6,0,,carbon-bearing 6; arsenic-bearing 4; silicate 4; sulfur-bearing 3; other 3
+scatter,20.0,0.05,0,9,0,63,21,5713,0.0037,3,0,,arsenic-bearing 4; silicate 4; carbon-bearing 3; sulfur-bearing 3; other 3
+scatter,20.0,0.1,0,9,0,63,18,5713,0.0032,1,0,,arsenic-bearing 4; silicate 4; sulfur-bearing 3; other 3; vanadium-bearing 2
+lag,5.0,0.0,9,9,16,63,612,5713,0.1071,78,9,Calcite; Fluorapatite; Hematite; Muscovite; Orthoclase,silicate 179; arsenic-bearing 116; phosphorus-bearing 94; other 79; carbon-bearing 58
+lag,5.0,0.01,9,9,16,63,515,5713,0.0901,69,8,Fluorapatite; Hematite; Muscovite; Orthoclase,silicate 156; arsenic-bearing 111; other 66; phosphorus-bearing 66; carbon-bearing 48
+lag,5.0,0.03,9,9,15,63,385,5713,0.0674,44,7,Fluorapatite; Hematite; Muscovite; Orthoclase,arsenic-bearing 111; silicate 111; other 52; phosphorus-bearing 42; vanadium-bearing 24
+lag,5.0,0.05,9,9,15,63,334,5713,0.0585,41,2,Fluorapatite; Hematite,arsenic-bearing 111; silicate 89; other 45; phosphorus-bearing 32; vanadium-bearing 24
+lag,5.0,0.1,9,9,15,63,279,5713,0.0488,37,0,,arsenic-bearing 111; silicate 72; other 30; vanadium-bearing 23; phosphorus-bearing 22
+lag,8.0,0.0,9,9,10,63,406,5713,0.0711,64,2,Fluorapatite; Muscovite,silicate 113; arsenic-bearing 100; other 48; carbon-bearing 46; phosphorus-bearing 39
+lag,8.0,0.01,9,9,10,63,377,5713,0.066,59,2,Fluorapatite; Muscovite,silicate 108; arsenic-bearing 100; other 44; carbon-bearing 41; phosphorus-bearing 30
+lag,8.0,0.03,9,9,10,63,308,5713,0.0539,39,2,Fluorapatite; Muscovite,arsenic-bearing 100; silicate 83; other 39; phosphorus-bearing 26; vanadium-bearing 22
+lag,8.0,0.05,9,9,10,63,281,5713,0.0492,36,1,Fluorapatite,arsenic-bearing 100; silicate 71; other 36; vanadium-bearing 22; phosphorus-bearing 21
+lag,8.0,0.1,9,9,10,63,244,5713,0.0427,33,0,,arsenic-bearing 100; silicate 61; other 25; vanadium-bearing 21; phosphorus-bearing 17
+lag,10.0,0.0,9,9,9,63,344,5713,0.0602,61,1,Fluorapatite,silicate 97; arsenic-bearing 91; other 40; carbon-bearing 40; phosphorus-bearing 25
+lag,10.0,0.01,9,9,9,63,322,5713,0.0564,56,1,Fluorapatite,silicate 95; arsenic-bearing 91; other 36; carbon-bearing 35; vanadium-bearing 24
+lag,10.0,0.03,9,9,9,63,269,5713,0.0471,38,1,Fluorapatite,arsenic-bearing 91; silicate 75; other 32; vanadium-bearing 20; phosphorus-bearing 18
+lag,10.0,0.05,9,9,9,63,254,5713,0.0445,35,1,Fluorapatite,arsenic-bearing 91; silicate 67; other 30; vanadium-bearing 20; phosphorus-bearing 17
+lag,10.0,0.1,9,9,9,63,222,5713,0.0389,32,0,,arsenic-bearing 91; silicate 58; other 21; vanadium-bearing 19; phosphorus-bearing 14
+lag,20.0,0.0,6,9,5,63,172,5713,0.0301,40,0,,silicate 48; arsenic-bearing 40; carbon-bearing 30; vanadium-bearing 18; other 16
+lag,20.0,0.01,6,9,5,63,167,5713,0.0292,37,0,,silicate 47; arsenic-bearing 40; carbon-bearing 28; vanadium-bearing 18; other 15
+lag,20.0,0.03,6,9,5,63,140,5713,0.0245,22,0,,arsenic-bearing 40; silicate 37; vanadium-bearing 18; other 15; carbon-bearing 11
+lag,20.0,0.05,6,9,5,63,134,5713,0.0235,19,0,,arsenic-bearing 40; silicate 34; vanadium-bearing 18; other 15; carbon-bearing 8
+lag,20.0,0.1,6,9,5,63,125,5713,0.0219,17,0,,arsenic-bearing 40; silicate 32; vanadium-bearing 18; other 14; phosphorus-bearing 8

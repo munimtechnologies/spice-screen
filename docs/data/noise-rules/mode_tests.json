@@ -1,0 +1,27 @@
+[
+ {
+  "mode": "diff",
+  "run": 44,
+  "failed": 0,
+  "tests": [],
+  "details": []
+ },
+ {
+  "mode": "scatter",
+  "run": 44,
+  "failed": 1,
+  "tests": [
+   "test_resolved_triplet_is_reported_band_by_band (test_spice_screen.TestScreen.test_resolved_triplet_is_reported_band_by_band)"
+  ],
+  "details": [
+   "Traceback (most recent call last):\n  File \"/work/test_spice_screen.py\", line 203, in test_resolved_triplet_is_reported_band_by_band\n    self.assertEqual(r[\"bands_detected\"], 3)\nAssertionError: 1 != 3\n"
+  ]
+ },
+ {
+  "mode": "lag",
+  "run": 44,
+  "failed": 0,
+  "tests": [],
+  "details": []
+ }
+]
