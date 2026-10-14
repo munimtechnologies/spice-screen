@@ -58,18 +58,18 @@ positives into *inconclusive* and defeat the screen. spice-screen therefore keep
 nu1 band at 840 cm-1 as the trigger, and leaves confirmation of the full triplet to a
 bench instrument or the laboratory follow-up.
 
-### Planned refinement
+### Confirmatory bands (since 0.4.0)
 
-A future version will carry the 825 and 856 cm-1 asymmetric stretches as **reported
-confirmatory bands** on the `lead_chromate` entry while keeping `min_bands` at 1, so
-that:
+Since version 0.4.0 the `lead_chromate` entry also carries the 825 and 856 cm-1
+asymmetric stretches as **confirmatory bands**, with `min_bands` kept at 1:
 
 - the 840 cm-1 nu1 band alone still flags screen-positive (sensitivity unchanged), and
-- when an instrument does resolve the triplet, the report shows all three bands, giving
-  an analyst stronger evidence that the 840 cm-1 feature really is chromate and not an
-  unrelated overlap.
+- when an instrument does resolve the triplet, the report shows all three bands
+  (`bands_detected: 3`, or `3/3 bands` in the text report), giving an analyst stronger
+  evidence that the 840 cm-1 feature really is chromate and not an unrelated overlap.
 
-This keeps the screen sensitive while making a confirmed triplet visible in the output.
+The tests check both cases on synthetic spectra: a lone 840 cm-1 band is still
+screen-positive, and a resolved triplet is reported band by band.
 
 ---
 

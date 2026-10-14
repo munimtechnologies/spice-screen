@@ -64,7 +64,9 @@ Each adulterant gets one of these verdicts:
 | `not-detected` | No marker band was found. This means "below what the screen can see", not "safe". |
 | `not-covered` | The spectrum does not cover the primary band. |
 
-Each report also has a `result`, the most serious verdict among its markers.
+Each report also has a `result`, the most serious verdict among its markers. Each marker
+lists every band it checked, with its signal-to-noise ratio and position, and
+`bands_detected`, the number of its bands found (shown as `2/3 bands` in the text report).
 
 ### Batches
 
@@ -92,12 +94,22 @@ sample spectra on the corrected axis. Each report records the correction it used
 
 | Adulterant | Mode | Bands (cm⁻¹) | Reported limit | Source |
 |---|---|---|---|---|
-| Lead chromate | Raman | **840** | ~0.5-0.6% w/w in turmeric powder | Erasmus et al., *Food Control* 2021, [doi:10.1016/j.foodcont.2020.107714](https://doi.org/10.1016/j.foodcont.2020.107714) |
+| Lead chromate | Raman | **840**, 825, 856 (1 needed) | ~0.5-0.6% w/w in turmeric powder | Erasmus et al., *Food Control* 2021, [doi:10.1016/j.foodcont.2020.107714](https://doi.org/10.1016/j.foodcont.2020.107714) (840 band, limit); Frost, *J Raman Spectrosc* 2004, [doi:10.1002/jrs.1121](https://doi.org/10.1002/jrs.1121) (triplet) |
 | Metanil yellow | Raman | **1406**, 997, 1147 (2 needed) | ~1% w/w in turmeric | Dhakal et al., *Foods* 2016, [doi:10.3390/foods5020036](https://doi.org/10.3390/foods5020036) |
 | Metanil yellow | SERS (Au) | **1383**, 504, 1176, 1588 (3 needed) | 0.1 mg/g in turmeric | [Metrohm AN-RS-019](https://www.metrohm.com/en/applications/application-notes/raman-anram/an-rs-019.html) |
 | Sudan I | SERS | **721**, 1226 (2 needed) | ~1 ppm after TLC | Talanta 2015 (PubMed 26078169); PubMed 29056826 |
 | Rhodamine B | SERS (Ag) | **1645**, 1360, 1509, 620 (3 needed) | ~1 µg/g in chili powder | Nguyen et al., *RSC Adv* 2025, [doi:10.1039/d5ra06188a](https://doi.org/10.1039/d5ra06188a) (bands); *Int J Biol Macromol* 2024, [doi:10.1016/j.ijbiomac.2024.135609](https://doi.org/10.1016/j.ijbiomac.2024.135609) (chili limit) |
 | Auramine O | SERS (Ag) | **778**, 551, 649, 1189 (3 needed) | dye bath down to 0.003 mg/mL; ~1 µg/g in curry powder (Au, after extraction) | *Foods* 2023, 12:4124, [doi:10.3390/foods12224124](https://doi.org/10.3390/foods12224124) (bands); [Metrohm AN-RS-020](https://www.metrohm.com/en/applications/application-notes/raman-anram/an-rs-020.html) (curry powder) |
+
+### Lead chromate's triplet
+
+Crocoite (PbCrO4) shows three chromate stretching bands, at 856, 841 and 825 cm⁻¹, and the
+middle one is the symmetric stretch (Frost 2004). The screen triggers on 840 alone, as
+before, because the three bands lie within about 31 cm⁻¹ and often merge into one feature
+on a handheld instrument. Requiring two of them would turn real positives into
+`inconclusive`. The 825 and 856 cm⁻¹ bands are checked and reported for confirmation: when an
+instrument resolves them, a `3/3 bands` positive is stronger evidence that the 840 cm⁻¹
+feature really is chromate. See [docs/lead-chromate-raman.md](docs/lead-chromate-raman.md).
 
 Auramine O's 1598 cm⁻¹ band is left out on purpose, because curcumin's strong bands near
 1600 cm⁻¹ overlap it in turmeric.
@@ -138,6 +150,9 @@ the tests check that a band keeps most of its height.
 
 ## Changes
 
+- **0.4.0** Lead chromate now also checks the 825 and 856 cm⁻¹ bands of the chromate triplet
+  (Frost 2004) for confirmation. 840 alone still flags, so sensitivity is unchanged. Each
+  marker reports `bands_detected`, and the text report shows it as `n/m bands`.
 - **0.3.0** Auramine O (SERS) marker for turmeric and curry powder. `--calibrate`: checks the
   Raman shift axis against polystyrene and screens on the corrected axis. Batch screening:
   several files or a wildcard, with `--csv` for one row per spectrum. Each report now has an

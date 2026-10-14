@@ -17,9 +17,16 @@ TURMERIC = ss.TURMERIC_LIKE
 # Synthetic polystyrene-like bands (positions from ss.POLYSTYRENE plus 1031.8).
 PS_BANDS = ((620.9, 150.0), (1001.4, 400.0), (1031.8, 100.0), (1602.3, 200.0))
 
+# Synthetic chromate triplet (positions from Frost 2004); the middle band strongest.
+CHROMATE_TRIPLET = ((840.0, 60.0), (825.0, 40.0), (856.0, 40.0))
+
 
 def verdicts(report):
     return {r["id"]: r["verdict"] for r in report["results"]}
+
+
+def result_for(report, marker_id):
+    return next(r for r in report["results"] if r["id"] == marker_id)
 
 
 def write_temp(text, folder=None, name=None):
@@ -111,6 +118,35 @@ class TestScreen(unittest.TestCase):
         band = report["results"][0]["bands"][0]
         self.assertTrue(abs(band["position"] - 840.0) <= 4.0)
 
+    def test_lead_chromate_entry_carries_the_chromate_triplet(self):
+        entry = next(e for e in ss.LIBRARY if e["id"] == "lead_chromate")
+        for band in (825.0, 840.0, 856.0):
+            self.assertIn(band, entry["bands"])
+        self.assertEqual(entry["primary"], 840.0)
+        # Close bands merge on handhelds, so 840 alone must still be enough.
+        self.assertEqual(entry["min_bands"], 1)
+        self.assertTrue(any("Frost" in s and "10.1002/jrs.1121" in s for s in entry["sources"]))
+
+    def test_840_alone_is_still_screen_positive(self):
+        x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
+        r = result_for(ss.screen_spectrum(x, y), "lead_chromate")
+        self.assertEqual(r["verdict"], "screen-positive")
+        primary = next(b for b in r["bands"] if b["center"] == 840.0)
+        self.assertTrue(primary["detected"])
+        self.assertGreaterEqual(r["bands_detected"], 1)
+
+    def test_resolved_triplet_is_reported_band_by_band(self):
+        x, y = ss.synthetic_spectrum(TURMERIC + CHROMATE_TRIPLET)
+        report = ss.screen_spectrum(x, y)
+        r = result_for(report, "lead_chromate")
+        self.assertEqual(r["verdict"], "screen-positive")
+        self.assertEqual(r["bands_detected"], 3)
+        for b in r["bands"]:
+            self.assertTrue(b["detected"], b["center"])
+            self.assertLessEqual(abs(b["position"] - b["center"]), 4.0)
+        self.assertEqual(verdicts(report)["metanil_yellow_raman"], "not-detected")
+        self.assertIn("3/3 bands", ss.format_report(report))
+
     def test_weak_band_below_threshold_is_not_detected(self):
         x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 0.5),))
         self.assertEqual(verdicts(ss.screen_spectrum(x, y))["lead_chromate"], "not-detected")
@@ -167,6 +203,7 @@ class TestScreen(unittest.TestCase):
         self.assertNotIn("calibration", report)
         for r in report["results"]:
             self.assertTrue(r["sources"])
+            self.assertIn("bands_detected", r)
 
     def test_rejects_tiny_input(self):
         with self.assertRaises(ValueError):
@@ -259,6 +296,9 @@ class TestCli(unittest.TestCase):
         code, out = self.run_main(["--list"])
         self.assertEqual(code, 0)
         self.assertIn("840", out)
+        self.assertIn("825", out)
+        self.assertIn("856", out)
+        self.assertIn("Frost", out)
         self.assertIn("Rhodamine B", out)
         self.assertIn("Auramine O", out)
         code, out = self.run_main(["--demo"])

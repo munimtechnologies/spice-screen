@@ -35,7 +35,7 @@ import json
 import math
 import sys
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 # Half-width (cm-1) of the local window used for baseline and noise around a band.
 WINDOW = 60.0
@@ -55,7 +55,7 @@ LIBRARY = [
         "name": "Lead chromate (PbCrO4)",
         "mode": "raman",
         "matrices": ["turmeric", "cinnamon", "other yellow or orange spices"],
-        "bands": [840.0],
+        "bands": [840.0, 825.0, 856.0],
         "primary": 840.0,
         "min_bands": 1,
         "tolerance": 8.0,
@@ -64,12 +64,18 @@ LIBRARY = [
             "Erasmus SW, van Hasselt L, Ebbinge LM, van Ruth SM. Real or fake yellow in the "
             "vibrant colour craze: rapid detection of lead chromate in turmeric. Food Control "
             "(2021) 107714. doi:10.1016/j.foodcont.2020.107714",
+            "Frost RL. Raman microscopy of selected chromate minerals. J Raman Spectrosc "
+            "35(2):153-158 (2004). doi:10.1002/jrs.1121 (crocoite, PbCrO4: CrO4 stretching "
+            "bands at 856, 841 and 825 cm-1; 841 is the symmetric stretch)",
         ],
         "note": (
-            "Turmeric and curcumin show no intense band at 840 cm-1. In ground powder, "
-            "field levels can sit below this limit; the pigment is applied to whole dried "
-            "roots during polishing (Forsyth et al., Environ Res 2019, "
-            "doi:10.1016/j.envres.2019.108722), so measure root surfaces where possible."
+            "Turmeric and curcumin show no intense band at 840 cm-1. 825 and 856 cm-1 are the "
+            "weaker bands of the chromate triplet; they are reported for confirmation only, "
+            "and 840 alone still flags, because on handheld instruments the three bands can "
+            "merge into one. In ground powder, field levels can sit below this limit; the "
+            "pigment is applied to whole dried roots during polishing (Forsyth et al., "
+            "Environ Res 2019, doi:10.1016/j.envres.2019.108722), so measure root surfaces "
+            "where possible."
         ),
     },
     {
@@ -418,6 +424,7 @@ def screen_entry(x, y, entry, snr_min):
         "name": entry["name"],
         "verdict": verdict,
         "bands": bands,
+        "bands_detected": len(detected),
         "reported_limit": entry.get("reported_limit", ""),
         "sources": list(entry["sources"]),
         "note": entry.get("note", ""),
@@ -588,7 +595,8 @@ def format_report(report):
             "%.0f:%s" % (b["center"], ("SNR %.1f" % b["snr"]) if b["covered"] else "n/a")
             for b in r["bands"]
         )
-        lines.append("  %-24s %-16s %s" % (r["id"], r["verdict"].upper(), bands))
+        lines.append("  %-24s %-16s %d/%d bands  %s"
+                     % (r["id"], r["verdict"].upper(), r["bands_detected"], len(r["bands"]), bands))
     lines.append(report["summary"])
     lines.append(report["disclaimer"])
     return "\n".join(lines)
