@@ -2,11 +2,11 @@
 """spice-screen: screen a Raman spectrum of a spice for known adulterants.
 
 Checks a measured Raman (or SERS) spectrum for the published marker bands of
-lead chromate, metanil yellow, Sudan I and rhodamine B, after removing the
-fluorescence background around each band. It is a screen, not a test: a
-positive must be confirmed by a laboratory method (ICP-MS or XRF for lead and
-chromium, HPLC for dyes), and "not-detected" only means "below what this
-screen can see".
+lead chromate, metanil yellow, Sudan I, rhodamine B and auramine O, after
+removing the fluorescence background around each band. It is a screen, not a
+test: a positive must be confirmed by a laboratory method (ICP-MS or XRF for
+lead and chromium, HPLC for dyes), and "not-detected" only means "below what
+this screen can see".
 
 Input is a two-column text file: Raman shift (cm-1), intensity. Commas,
 semicolons (with decimal commas), tabs or spaces; header and # lines are
@@ -18,6 +18,9 @@ Usage:
     python spice_screen.py spectrum.csv                  # normal Raman, text report
     python spice_screen.py spectrum.csv --mode sers --json
     python spice_screen.py spectrum.csv --exit-code      # exit 1 on a positive
+    python spice_screen.py "batch/*.csv" --csv           # one CSV row per spectrum
+    python spice_screen.py --calibrate polystyrene.csv   # check the shift axis
+    python spice_screen.py spectrum.csv --calibrate polystyrene.csv
     python spice_screen.py --list                        # marker library with sources
     python spice_screen.py --demo                        # synthetic example
 
@@ -26,11 +29,13 @@ Made by MV2 of Munim, Inc. with AI agents working in his name. MIT licence.
 from __future__ import annotations
 
 import argparse
+import csv
+import glob
 import json
 import math
 import sys
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Half-width (cm-1) of the local window used for baseline and noise around a band.
 WINDOW = 60.0
@@ -143,7 +148,49 @@ LIBRARY = [
             "bands are the strongest of the eight SERS bands reported by Nguyen et al."
         ),
     },
+    {
+        "id": "auramine_o_sers",
+        "name": "Auramine O (SERS, silver)",
+        "mode": "sers",
+        "matrices": ["turmeric", "curry powder", "saffron"],
+        "bands": [778.0, 551.0, 649.0, 1189.0],
+        "primary": 778.0,
+        "min_bands": 3,
+        "tolerance": 8.0,
+        "reported_limit": (
+            "dyeing solution down to 0.003 mg/mL (Ag SERS; a limit for the dye bath, not the "
+            "herb); about 1 ug/g in curry powder after extraction (Au SERS, Metrohm)"
+        ),
+        "sources": [
+            "Rapid Indentification of Auramine O Dyeing Adulteration in Dendrobium officinale, "
+            "Saffron and Curcuma by SERS Raman Spectroscopy Combined with SSA-BP Neural Networks "
+            "Model. Foods 12(22):4124 (2023). doi:10.3390/foods12224124 (bands 551, 649, 778, "
+            "1189, 1598 cm-1; 778 chosen as the characteristic band)",
+            "Metrohm application note AN-RS-020, trace detection of auramine O in curry powder. "
+            "https://www.metrohm.com/en/applications/application-notes/raman-anram/an-rs-020.html "
+            "(extraction; 1 ug/g)",
+        ],
+        "note": (
+            "Auramine O is a yellow industrial dye. The 1598 cm-1 band is left out because "
+            "curcumin's strong bands near 1600 cm-1 overlap it. Its SERS bands shift with "
+            "solvent and pH (Metrohm), so check a reference on your substrate first."
+        ),
+    },
 ]
+
+# Polystyrene bands (cm-1) for checking the Raman shift axis. Measure a
+# polystyrene reference on the same instrument, the same day.
+POLYSTYRENE = {
+    "reference": "polystyrene",
+    "bands": [620.9, 1001.4, 1602.3, 3054.3],
+    "tolerance_cm1": 1.5,
+    "sources": [
+        "ASTM E1840, Standard Guide for Raman Shift Standards for Spectrometer Calibration; "
+        "the four bands as quoted in Appl Spectrosc (2025), doi:10.1177/00037028251330654",
+        "Tolerance +/-1.5 cm-1: European Pharmacopoeia, as applied to 26 Raman systems in "
+        "Anal Sci (2019), doi:10.2116/analsci.18P501",
+    ],
+}
 
 # Synthetic stand-ins for a turmeric matrix, used by --demo and the tests.
 # Not reference data.
@@ -272,6 +319,87 @@ def check_band(x, y, center, tol, snr_min, window=WINDOW):
     return res
 
 
+def _vertex(x0, x1, x2, y0, y1, y2):
+    """x of the top of the parabola through three points (x1 if it opens upward)."""
+    d = (x0 - x1) * (x0 - x2) * (x1 - x2)
+    a = (x2 * (y1 - y0) + x1 * (y0 - y2) + x0 * (y2 - y1)) / d
+    b = (x2 * x2 * (y0 - y1) + x1 * x1 * (y2 - y0) + x0 * x0 * (y1 - y2)) / d
+    if a >= 0:
+        return x1
+    return min(max(-b / (2.0 * a), x0), x2)
+
+
+def locate_peak(x, y, center, search, snr_min=10.0, window=WINDOW):
+    """Position (cm-1) of the strongest peak within `search` of `center`,
+    refined by a parabola through its top three points. None if the range is
+    not covered or no clear peak stands there."""
+    idx = [i for i, v in enumerate(x) if abs(v - center) <= window]
+    if len(idx) < 15 or x[idx[0]] > center - search or x[idx[-1]] < center + search:
+        return None
+    xs = [x[i] for i in idx]
+    ys = [y[i] for i in idx]
+    base = modpoly_baseline(xs, ys)
+    corr = [a - b for a, b in zip(ys, base)]
+    near = [i for i, v in enumerate(xs) if abs(v - center) <= search]
+    outside = [c for v, c in zip(xs, corr) if abs(v - center) > search]
+    if len(near) < 3 or len(outside) < 8:
+        return None
+    k = max(near, key=lambda i: corr[i])
+    if k in (near[0], near[-1]):
+        return None
+    floor = 1e-9 * max(abs(v) for v in ys) or 1e-12
+    sigma = max(noise_sigma(corr), floor)
+    if (corr[k] - _median(outside)) / sigma < snr_min:
+        return None
+    return _vertex(xs[k - 1], xs[k], xs[k + 1], corr[k - 1], corr[k], corr[k + 1])
+
+
+def calibrate(x, y, reference=POLYSTYRENE, search=12.0, snr_min=10.0):
+    """Compare a reference spectrum (polystyrene by default) with its known
+    bands and return a linear correction: true shift = offset + slope * measured.
+    With one band found, the correction is an offset only."""
+    found = []
+    for ref in reference["bands"]:
+        pos = locate_peak(x, y, ref, search, snr_min)
+        if pos is not None:
+            found.append((pos, ref))
+    if not found:
+        raise ValueError("no %s band found within %g cm-1 of its reference position"
+                         % (reference["reference"], search))
+    if len(found) >= 2:
+        mm = sum(p for p, _ in found) / len(found)
+        mr = sum(r for _, r in found) / len(found)
+        slope = (sum((p - mm) * (r - mr) for p, r in found)
+                 / sum((p - mm) ** 2 for p, _ in found))
+        offset = mr - slope * mm
+    else:
+        slope = 1.0
+        offset = found[0][1] - found[0][0]
+    if abs(slope - 1.0) > 0.02:
+        raise ValueError("calibration slope %.4f is implausible; check the reference spectrum" % slope)
+    worst = max(abs(p - r) for p, r in found)
+    tol = float(reference["tolerance_cm1"])
+    return {
+        "reference": reference["reference"],
+        "bands": [
+            {"reference": r, "measured": round(p, 2), "error": round(p - r, 2),
+             "corrected_error": round(offset + slope * p - r, 2)}
+            for p, r in found
+        ],
+        "max_abs_error": round(worst, 2),
+        "tolerance_cm1": tol,
+        "within_tolerance": worst <= tol,
+        "offset": offset,
+        "slope": slope,
+        "sources": list(reference["sources"]),
+    }
+
+
+def apply_calibration(x, calibration):
+    """Correct a Raman shift axis with a calibrate() result."""
+    return [calibration["offset"] + calibration["slope"] * v for v in x]
+
+
 def screen_entry(x, y, entry, snr_min):
     tol = float(entry.get("tolerance", 8.0))
     bands = [check_band(x, y, float(c), tol, snr_min) for c in entry["bands"]]
@@ -322,10 +450,22 @@ def validate_library(library):
     return True
 
 
-def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None):
-    """Screen one spectrum. Returns a JSON-ready report."""
+def overall_result(results):
+    """The most serious verdict among the markers screened."""
+    verdicts = [r["verdict"] for r in results]
+    for level in ("screen-positive", "inconclusive", "not-detected"):
+        if level in verdicts:
+            return level
+    return "not-covered"
+
+
+def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=None):
+    """Screen one spectrum. Returns a JSON-ready report. `calibration` is an
+    optional calibrate() result; the shift axis is corrected with it first."""
     if len(x) != len(y) or len(x) < 15:
         raise ValueError("need at least 15 points with matching x and y")
+    if calibration is not None:
+        x = apply_calibration(x, calibration)
     lib = LIBRARY if library is None else library
     results = [screen_entry(x, y, e, snr_min) for e in lib if e["mode"] == mode]
     positives = [r["name"] for r in results if r["verdict"] == "screen-positive"]
@@ -336,17 +476,21 @@ def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None):
         summary = "inconclusive: partial match for %s. Re-measure or test in a laboratory." % "; ".join(partial)
     else:
         summary = "no listed adulterant detected at this screen's limits."
-    return {
+    report = {
         "tool": "spice-screen",
         "version": __version__,
         "mode": mode,
         "snr_threshold": snr_min,
         "range_cm1": [min(x), max(x)],
         "points": len(x),
+        "result": overall_result(results),
         "results": results,
         "summary": summary,
         "disclaimer": DISCLAIMER,
     }
+    if calibration is not None:
+        report["calibration"] = calibration
+    return report
 
 
 def _fields(line):
@@ -383,6 +527,18 @@ def read_spectrum(path):
         return parse_spectrum(fh.read())
 
 
+def expand_paths(args):
+    """Expand wildcard arguments ourselves, since Windows shells do not."""
+    out = []
+    for a in args:
+        if any(ch in a for ch in "*?["):
+            hits = sorted(glob.glob(a))
+            out.extend(hits if hits else [a])
+        else:
+            out.append(a)
+    return out
+
+
 def synthetic_spectrum(peaks=(), start=200.0, stop=1800.0, step=2.0, noise=1.0, seed=7, hwhm=5.0):
     """Curved fluorescence-like background + Lorentzian peaks + noise.
     For demos and tests only; not reference data."""
@@ -403,12 +559,30 @@ def synthetic_spectrum(peaks=(), start=200.0, stop=1800.0, step=2.0, noise=1.0, 
     return x, y
 
 
+def format_calibration(cal):
+    lines = ["Raman shift check against %s (tolerance +/-%g cm-1)" % (cal["reference"], cal["tolerance_cm1"])]
+    for b in cal["bands"]:
+        lines.append("  %7.1f cm-1: measured %.1f, error %+.1f, after correction %+.1f"
+                     % (b["reference"], b["measured"], b["error"], b["corrected_error"]))
+    if cal["within_tolerance"]:
+        lines.append("result: within tolerance")
+    else:
+        lines.append("result: OUTSIDE tolerance; screen with --calibrate to correct the shift axis")
+    lines.append("correction: shift = %.3f + %.6f x measured" % (cal["offset"], cal["slope"]))
+    return "\n".join(lines)
+
+
 def format_report(report):
     lines = [
         "spice-screen %s  mode=%s  range %.0f-%.0f cm-1  %d points  SNR >= %g"
         % (report["version"], report["mode"], report["range_cm1"][0], report["range_cm1"][1],
            report["points"], report["snr_threshold"])
     ]
+    cal = report.get("calibration")
+    if cal:
+        lines.append("  shift axis corrected against %s: largest error was %.1f cm-1 over %d bands (%s +/-%g)"
+                     % (cal["reference"], cal["max_abs_error"], len(cal["bands"]),
+                        "within" if cal["within_tolerance"] else "outside", cal["tolerance_cm1"]))
     for r in report["results"]:
         bands = "  ".join(
             "%.0f:%s" % (b["center"], ("SNR %.1f" % b["snr"]) if b["covered"] else "n/a")
@@ -432,14 +606,31 @@ def format_library(library):
     return "\n".join(out)
 
 
+def write_csv(done, ids, stream):
+    """One row per spectrum: file, overall result, then each marker's verdict."""
+    w = csv.writer(stream, lineterminator="\n")
+    w.writerow(["file", "result"] + ids)
+    for path, report, error in done:
+        if report is None:
+            w.writerow([path, "error: %s" % error] + [""] * len(ids))
+            continue
+        v = {r["id"]: r["verdict"] for r in report["results"]}
+        w.writerow([path, report["result"]] + [v.get(i, "") for i in ids])
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Screen a Raman spectrum of a spice for known adulterants.")
-    ap.add_argument("spectrum", nargs="?", help="two-column file: Raman shift (cm-1), intensity")
+    ap.add_argument("spectrum", nargs="*",
+                    help="two-column files: Raman shift (cm-1), intensity; wildcards work")
     ap.add_argument("--mode", choices=("raman", "sers"), default="raman",
                     help="normal Raman (default) or SERS markers")
     ap.add_argument("--snr", type=float, default=5.0, help="peak signal-to-noise needed (default 5)")
     ap.add_argument("--library", help="JSON file with your own marker list (same fields as --list)")
+    ap.add_argument("--calibrate", metavar="POLYSTYRENE",
+                    help="polystyrene spectrum from the same instrument: check the shift axis "
+                         "and correct the spectra with it")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
+    ap.add_argument("--csv", action="store_true", help="print one CSV row per spectrum (for batches)")
     ap.add_argument("--exit-code", action="store_true", help="exit 1 if anything is screen-positive")
     ap.add_argument("--list", action="store_true", help="print the marker library and its sources")
     ap.add_argument("--demo", action="store_true", help="screen a synthetic turmeric spectrum with an 840 cm-1 band")
@@ -459,21 +650,58 @@ def main(argv=None):
         print(json.dumps(library, indent=2) if args.json else format_library(library))
         return 0
 
+    cal = None
+    if args.calibrate:
+        try:
+            cal = calibrate(*read_spectrum(args.calibrate))
+        except (OSError, ValueError) as exc:
+            print("error: calibration: %s" % exc, file=sys.stderr)
+            return 2
+        if not args.spectrum and not args.demo:
+            print(json.dumps(cal, indent=2) if args.json else format_calibration(cal))
+            return 0
+
     if args.demo:
         x, y = synthetic_spectrum(TURMERIC_LIKE + ((840.0, 40.0),))
-    elif args.spectrum:
-        try:
-            x, y = read_spectrum(args.spectrum)
-        except (OSError, ValueError) as exc:
-            print("error: %s" % exc, file=sys.stderr)
-            return 2
-    else:
+        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal)
+        print(json.dumps(report, indent=2) if args.json else format_report(report))
+        if args.exit_code and report["result"] == "screen-positive":
+            return 1
+        return 0
+
+    if not args.spectrum:
         ap.print_usage(sys.stderr)
         return 2
 
-    report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library)
-    print(json.dumps(report, indent=2) if args.json else format_report(report))
-    if args.exit_code and any(r["verdict"] == "screen-positive" for r in report["results"]):
+    paths = expand_paths(args.spectrum)
+    done = []
+    for path in paths:
+        try:
+            x, y = read_spectrum(path)
+        except (OSError, ValueError) as exc:
+            print("error: %s: %s" % (path, exc), file=sys.stderr)
+            done.append((path, None, str(exc)))
+            continue
+        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal)
+        done.append((path, report, ""))
+
+    if args.csv:
+        write_csv(done, [e["id"] for e in library if e["mode"] == args.mode], sys.stdout)
+    elif len(paths) == 1:
+        if done[0][1] is not None:
+            print(json.dumps(done[0][1], indent=2) if args.json else format_report(done[0][1]))
+    elif args.json:
+        out = [dict(report, file=path) if report is not None else {"file": path, "error": error}
+               for path, report, error in done]
+        print(json.dumps(out, indent=2))
+    else:
+        for path, report, error in done:
+            print("== %s ==" % path)
+            print(format_report(report) if report is not None else "error: %s" % error)
+
+    if any(report is None for _, report, _ in done):
+        return 2
+    if args.exit_code and any(r is not None and r["result"] == "screen-positive" for _, r, _ in done):
         return 1
     return 0
 

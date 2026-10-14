@@ -1,9 +1,10 @@
 # spice-screen
 
 Screen a **Raman spectrum of a spice** for known toxic adulterants: lead chromate, metanil
-yellow, Sudan I and rhodamine B. It removes the fluorescence background, then looks for each
-adulterant's published marker bands. Every marker comes with its source and its reported
-detection limit.
+yellow, Sudan I, rhodamine B and auramine O. It removes the fluorescence background, then
+looks for each adulterant's published marker bands. Every marker comes with its source and
+its reported detection limit. It can also check an instrument's Raman shift axis against
+polystyrene and screen a whole folder of spectra into one CSV table.
 
 ## Why
 
@@ -29,8 +30,9 @@ $20,000-65,000. Pocket Raman devices cost far less, and the pigment has a strong
 Raman band at 840 cm⁻¹. This tool turns a spectrum from any Raman device into a cited,
 cautious screening call.
 
-Illegal dyes are the other half of spice fraud: metanil yellow in turmeric, and Sudan I and
-rhodamine B in chili and paprika. They are usually screened by SERS after a quick extraction.
+Illegal dyes are the other half of spice fraud: metanil yellow and auramine O in turmeric,
+and Sudan I and rhodamine B in chili and paprika. They are usually screened by SERS after a
+quick extraction.
 
 ## Use
 
@@ -41,6 +43,9 @@ python spice_screen.py spectrum.csv                 # normal Raman, text report
 python spice_screen.py spectrum.csv --mode sers     # SERS markers (dyes after extraction)
 python spice_screen.py spectrum.csv --json          # machine-readable report
 python spice_screen.py spectrum.csv --exit-code     # exit 1 if anything is screen-positive
+python spice_screen.py "market-survey/*.csv" --csv  # one row per spectrum, for batches
+python spice_screen.py --calibrate polystyrene.csv  # check the instrument's shift axis
+python spice_screen.py spectrum.csv --calibrate polystyrene.csv   # screen on a corrected axis
 python spice_screen.py --list                       # the marker library and its sources
 python spice_screen.py --demo                       # a synthetic example
 python -m unittest -v                               # tests, offline
@@ -59,6 +64,30 @@ Each adulterant gets one of these verdicts:
 | `not-detected` | No marker band was found. This means "below what the screen can see", not "safe". |
 | `not-covered` | The spectrum does not cover the primary band. |
 
+Each report also has a `result`, the most serious verdict among its markers.
+
+### Batches
+
+Give several files, or a wildcard in quotes (it is expanded by the tool, so it works on
+Windows too). `--csv` prints one row per file: the file, its overall result, then one column
+per marker. A file that cannot be read gets an `error:` row, the rest are still screened, and
+the exit code is 2. With `--json`, a batch prints a list of reports, each with its `file`.
+
+### Checking the shift axis
+
+Marker bands are searched within ±8 cm⁻¹ of their published positions, and low-cost
+spectrometers can be off by more than that. In a study of 26 Raman systems, only 16 of the 26
+measurements of polystyrene's 1001.4 cm⁻¹ band met the European Pharmacopoeia's ±1.5 cm⁻¹
+tolerance ([Anal Sci 2019](https://doi.org/10.2116/analsci.18P501)).
+
+Measure a piece of polystyrene on the same instrument, the same day, and pass it with
+`--calibrate`. The tool finds the polystyrene bands at 620.9, 1001.4, 1602.3 and 3054.3 cm⁻¹
+(ASTM E1840, as quoted in [Appl Spectrosc 2025](https://doi.org/10.1177/00037028251330654))
+that the spectrum covers. It refines each band's position with a parabola through its top
+three points and reports the error at each band against the ±1.5 cm⁻¹ tolerance. It then
+fits a straight-line correction (an offset alone if only one band is found) and screens the
+sample spectra on the corrected axis. Each report records the correction it used.
+
 ## Marker library
 
 | Adulterant | Mode | Bands (cm⁻¹) | Reported limit | Source |
@@ -68,6 +97,10 @@ Each adulterant gets one of these verdicts:
 | Metanil yellow | SERS (Au) | **1383**, 504, 1176, 1588 (3 needed) | 0.1 mg/g in turmeric | [Metrohm AN-RS-019](https://www.metrohm.com/en/applications/application-notes/raman-anram/an-rs-019.html) |
 | Sudan I | SERS | **721**, 1226 (2 needed) | ~1 ppm after TLC | Talanta 2015 (PubMed 26078169); PubMed 29056826 |
 | Rhodamine B | SERS (Ag) | **1645**, 1360, 1509, 620 (3 needed) | ~1 µg/g in chili powder | Nguyen et al., *RSC Adv* 2025, [doi:10.1039/d5ra06188a](https://doi.org/10.1039/d5ra06188a) (bands); *Int J Biol Macromol* 2024, [doi:10.1016/j.ijbiomac.2024.135609](https://doi.org/10.1016/j.ijbiomac.2024.135609) (chili limit) |
+| Auramine O | SERS (Ag) | **778**, 551, 649, 1189 (3 needed) | dye bath down to 0.003 mg/mL; ~1 µg/g in curry powder (Au, after extraction) | *Foods* 2023, 12:4124, [doi:10.3390/foods12224124](https://doi.org/10.3390/foods12224124) (bands); [Metrohm AN-RS-020](https://www.metrohm.com/en/applications/application-notes/raman-anram/an-rs-020.html) (curry powder) |
+
+Auramine O's 1598 cm⁻¹ band is left out on purpose, because curcumin's strong bands near
+1600 cm⁻¹ overlap it in turmeric.
 
 Use `--library my_markers.json` to add markers of your own. It takes the same fields as
 `--list --json`, and every entry needs at least one source.
@@ -96,12 +129,19 @@ the tests check that a band keeps most of its height.
   surface of whole polished roots, where the pigment sits, or measuring before grinding,
   should help. Validating that is the next step.
 - Band positions vary by a few cm⁻¹ between instruments, and SERS bands also vary with the
-  substrate. Check a known reference sample on your device first.
+  substrate, solvent and pH. Use `--calibrate` for the instrument, and check a known
+  reference sample on your substrate first.
+- The polystyrene correction is only as good as the polystyrene spectrum: measure it on the
+  same instrument and settings, and on the same day, as the samples.
 - This is not food-safety, medical or legal advice. Follow your local regulator's methods
   for any enforcement decision.
 
 ## Changes
 
+- **0.3.0** Auramine O (SERS) marker for turmeric and curry powder. `--calibrate`: checks the
+  Raman shift axis against polystyrene and screens on the corrected axis. Batch screening:
+  several files or a wildcard, with `--csv` for one row per spectrum. Each report now has an
+  overall `result`.
 - **0.2.0** First public release. Rhodamine B (SERS) marker for chili products. Baseline
   test now checks what the screen relies on (a band keeps most of its height) instead of a
   bound the method cannot meet in narrow windows; the 0.1.0 draft never shipped because of it.
