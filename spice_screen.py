@@ -21,6 +21,7 @@ Usage:
     python spice_screen.py "batch/*.csv" --csv           # one CSV row per spectrum
     python spice_screen.py --calibrate polystyrene.csv   # check the shift axis
     python spice_screen.py spectrum.csv --calibrate polystyrene.csv
+    python spice_screen.py spectrum.csv --noise diff     # raw, unsmoothed spectra (see local_noise)
     python spice_screen.py --list                        # marker library with sources
     python spice_screen.py --demo                        # synthetic example
 
@@ -35,10 +36,20 @@ import json
 import math
 import sys
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 # Half-width (cm-1) of the local window used for baseline and noise around a band.
 WINDOW = 60.0
+
+# How check_band() estimates the noise a band must stand above; see local_noise().
+# "lag" is the default from 0.5.0: on the RRUFF mineral library it kept every
+# crocoite spectrum and flagged about a third as many minerals without chromium
+# as "diff" did (docs/rruff-noise-rules.md).
+NOISE = "lag"
+NOISE_MODES = ("diff", "scatter", "lag")
+# Lag (cm-1) for the "lag" noise estimate: longer than the smoothing that
+# instrument software applies, shorter than a Raman band.
+LAG_CM1 = 4.0
 
 DISCLAIMER = (
     "Screening result only. A positive must be confirmed by a laboratory method "
@@ -283,10 +294,11 @@ def _median(values):
     return s[mid] if n % 2 else (s[mid - 1] + s[mid]) / 2.0
 
 
-def noise_sigma(values):
-    """Robust noise estimate from point-to-point differences (MAD), so slow
-    background and isolated peaks barely affect it."""
-    d = [b - a for a, b in zip(values, values[1:])]
+def noise_sigma(values, lag=1):
+    """Robust noise estimate from differences between points `lag` apart
+    (MAD), so slow background and isolated peaks barely affect it."""
+    lag = max(1, int(lag))
+    d = [b - a for a, b in zip(values, values[lag:])]
     if len(d) < 2:
         return 0.0
     med = _median(d)
@@ -294,7 +306,39 @@ def noise_sigma(values):
     return 1.4826 * mad / math.sqrt(2.0)
 
 
-def check_band(x, y, center, tol, snr_min, window=WINDOW):
+def robust_scatter(values):
+    """Robust spread of `values` (MAD scaled to a standard deviation)."""
+    if len(values) < 2:
+        return 0.0
+    med = _median(values)
+    return 1.4826 * _median([abs(v - med) for v in values])
+
+
+def local_noise(xs, corr, outside, mode=None):
+    """Noise a band must stand above, from a baseline-corrected window.
+
+    "diff" (the default up to 0.4.0): spread of point-to-point differences.
+    Software smoothing shrinks it, so on smoothed spectra small ripples pass
+    as peaks. Use it for raw, unsmoothed spectra.
+    "scatter": the larger of that and the spread of the corrected points away
+    from the band, so a band must also stand out from the window's own texture.
+    "lag" (the default from 0.5.0): the larger of that and the spread of
+    differences between points LAG_CM1 apart, away from the band, which
+    smoothing shorter than LAG_CM1 does not shrink."""
+    mode = NOISE if mode is None else mode
+    if mode not in NOISE_MODES:
+        raise ValueError("noise mode must be one of: %s" % ", ".join(NOISE_MODES))
+    sigma = noise_sigma(corr)
+    if mode == "scatter":
+        sigma = max(sigma, robust_scatter(outside))
+    elif mode == "lag":
+        step = (xs[-1] - xs[0]) / (len(xs) - 1) if len(xs) > 1 else 0.0
+        lag = int(round(LAG_CM1 / step)) if step > 0 else 1
+        sigma = max(sigma, noise_sigma(outside, lag))
+    return sigma
+
+
+def check_band(x, y, center, tol, snr_min, window=WINDOW, noise=None):
     """Look for a peak at `center` +/- `tol` above the local baseline."""
     res = {"center": center, "covered": False, "detected": False, "snr": 0.0, "position": None}
     idx = [i for i, v in enumerate(x) if abs(v - center) <= window]
@@ -313,7 +357,7 @@ def check_band(x, y, center, tol, snr_min, window=WINDOW):
     res["covered"] = True
     offset = _median(outside)
     floor = 1e-9 * max(abs(v) for v in ys) or 1e-12
-    sigma = max(noise_sigma(corr), floor)
+    sigma = max(local_noise(xs, corr, outside, noise), floor)
     k = max(range(len(inside)), key=lambda i: inside[i][0])
     height = inside[k][0] - offset
     snr = height / sigma
@@ -321,6 +365,7 @@ def check_band(x, y, center, tol, snr_min, window=WINDOW):
     at_edge = len(inside) >= 3 and k in (0, len(inside) - 1)
     res["snr"] = round(snr, 2)
     res["position"] = inside[k][1]
+    res["edge"] = at_edge
     res["detected"] = (not at_edge) and snr >= snr_min
     return res
 
@@ -406,9 +451,9 @@ def apply_calibration(x, calibration):
     return [calibration["offset"] + calibration["slope"] * v for v in x]
 
 
-def screen_entry(x, y, entry, snr_min):
+def screen_entry(x, y, entry, snr_min, noise=None):
     tol = float(entry.get("tolerance", 8.0))
-    bands = [check_band(x, y, float(c), tol, snr_min) for c in entry["bands"]]
+    bands = [check_band(x, y, float(c), tol, snr_min, noise=noise) for c in entry["bands"]]
     primary = next(b for b in bands if b["center"] == float(entry["primary"]))
     detected = [b for b in bands if b["detected"]]
     if not primary["covered"]:
@@ -466,15 +511,17 @@ def overall_result(results):
     return "not-covered"
 
 
-def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=None):
+def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=None, noise=None):
     """Screen one spectrum. Returns a JSON-ready report. `calibration` is an
-    optional calibrate() result; the shift axis is corrected with it first."""
+    optional calibrate() result; the shift axis is corrected with it first.
+    `noise` picks the noise estimate (see local_noise); None means NOISE."""
     if len(x) != len(y) or len(x) < 15:
         raise ValueError("need at least 15 points with matching x and y")
     if calibration is not None:
         x = apply_calibration(x, calibration)
     lib = LIBRARY if library is None else library
-    results = [screen_entry(x, y, e, snr_min) for e in lib if e["mode"] == mode]
+    noise = NOISE if noise is None else noise
+    results = [screen_entry(x, y, e, snr_min, noise) for e in lib if e["mode"] == mode]
     positives = [r["name"] for r in results if r["verdict"] == "screen-positive"]
     partial = [r["name"] for r in results if r["verdict"] == "inconclusive"]
     if positives:
@@ -488,6 +535,7 @@ def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=N
         "version": __version__,
         "mode": mode,
         "snr_threshold": snr_min,
+        "noise": noise,
         "range_cm1": [min(x), max(x)],
         "points": len(x),
         "result": overall_result(results),
@@ -581,9 +629,9 @@ def format_calibration(cal):
 
 def format_report(report):
     lines = [
-        "spice-screen %s  mode=%s  range %.0f-%.0f cm-1  %d points  SNR >= %g"
+        "spice-screen %s  mode=%s  range %.0f-%.0f cm-1  %d points  SNR >= %g  noise=%s"
         % (report["version"], report["mode"], report["range_cm1"][0], report["range_cm1"][1],
-           report["points"], report["snr_threshold"])
+           report["points"], report["snr_threshold"], report.get("noise", NOISE))
     ]
     cal = report.get("calibration")
     if cal:
@@ -633,6 +681,8 @@ def main(argv=None):
     ap.add_argument("--mode", choices=("raman", "sers"), default="raman",
                     help="normal Raman (default) or SERS markers")
     ap.add_argument("--snr", type=float, default=5.0, help="peak signal-to-noise needed (default 5)")
+    ap.add_argument("--noise", choices=NOISE_MODES, default=None,
+                    help="noise estimate a band must stand above (default %s)" % NOISE)
     ap.add_argument("--library", help="JSON file with your own marker list (same fields as --list)")
     ap.add_argument("--calibrate", metavar="POLYSTYRENE",
                     help="polystyrene spectrum from the same instrument: check the shift axis "
@@ -671,7 +721,8 @@ def main(argv=None):
 
     if args.demo:
         x, y = synthetic_spectrum(TURMERIC_LIKE + ((840.0, 40.0),))
-        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal)
+        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal,
+                                 noise=args.noise)
         print(json.dumps(report, indent=2) if args.json else format_report(report))
         if args.exit_code and report["result"] == "screen-positive":
             return 1
@@ -690,7 +741,8 @@ def main(argv=None):
             print("error: %s: %s" % (path, exc), file=sys.stderr)
             done.append((path, None, str(exc)))
             continue
-        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal)
+        report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal,
+                                 noise=args.noise)
         done.append((path, report, ""))
 
     if args.csv:

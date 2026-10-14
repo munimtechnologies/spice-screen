@@ -6,12 +6,12 @@ looks for each adulterant's published marker bands. Every marker comes with its 
 its reported detection limit. It can also check an instrument's Raman shift axis against
 polystyrene and screen a whole folder of spectra into one CSV table.
 
-> **Audit note (2026-10-14).** Checked against the whole RRUFF Raman library, 0.4.0 found
-> every real lead chromate (crocoite) spectrum, but it also flagged 34% of the spectra of
-> minerals without chromium. Most of those flags come from a noise estimate that smoothing
-> fools, and a fix is in testing. Some are real bands of other minerals at 840 cm⁻¹,
-> including white lead (cerussite). Read [docs/rruff-audit.md](docs/rruff-audit.md) before
-> relying on a positive from a smoothed spectrum.
+> **0.5.0 (2026-10-14): fewer false flags.** On the whole RRUFF mineral library, 0.4.0 found
+> every real lead chromate (crocoite) spectrum but also flagged 34% of the spectra of minerals
+> without chromium, mostly because smoothing fooled its noise estimate. 0.5.0 uses a noise
+> estimate that smoothing cannot shrink. It still finds 9 of 9 crocoite spectra and flags
+> 11.6% of the minerals without chromium. Most of the remaining flags are real bands of other
+> minerals at 840 cm⁻¹, including white lead. See [docs/rruff-noise-rules.md](docs/rruff-noise-rules.md).
 
 ## Why
 
@@ -35,12 +35,15 @@ their colour. It poisons the people who eat them.
 Screening is what worked in Bangladesh, but new handheld XRF analyzers cost about
 $20,000-65,000. Pocket Raman devices cost far less. The pigment has a strong Raman band at
 840 cm⁻¹, which turmeric itself lacks, although some minerals and white lead also show bands
-there (see the audit). This tool turns a spectrum from any Raman device into a cited,
+there (see the audits). This tool turns a spectrum from any Raman device into a cited,
 cautious screening call.
 
 Illegal dyes are the other half of spice fraud: metanil yellow and auramine O in turmeric,
 and Sudan I and rhodamine B in chili and paprika. They are usually screened by SERS after a
 quick extraction.
+
+How low a screen must reach to matter is measured from public lead-testing data in the
+companion repository [spice-lead-recalls](https://github.com/munimtechnologies/spice-lead-recalls).
 
 ## Use
 
@@ -54,6 +57,7 @@ python spice_screen.py spectrum.csv --exit-code     # exit 1 if anything is scre
 python spice_screen.py "market-survey/*.csv" --csv  # one row per spectrum, for batches
 python spice_screen.py --calibrate polystyrene.csv  # check the instrument's shift axis
 python spice_screen.py spectrum.csv --calibrate polystyrene.csv   # screen on a corrected axis
+python spice_screen.py spectrum.csv --noise diff    # raw, unsmoothed spectra (more sensitive)
 python spice_screen.py --list                       # the marker library and its sources
 python spice_screen.py --demo                       # a synthetic example
 python -m unittest -v                               # tests, offline
@@ -131,9 +135,17 @@ Use `--library my_markers.json` to add markers of your own. It takes the same fi
 
 For each marker band, the tool takes a ±60 cm⁻¹ window. It fits the fluorescence background
 by modified polynomial fitting (Lieber & Mahadevan-Jansen, *Appl Spectrosc* 57:1363, 2003).
-It then estimates noise from the robust spread of point-to-point differences and measures
-the highest point within ±8 cm⁻¹ of the band against the local offset. A maximum that sits
-on the edge of that range is treated as the flank of a neighbouring band, not a peak.
+It then measures the highest point within ±8 cm⁻¹ of the band against the local offset and
+divides by the noise. A maximum that sits on the edge of that range is treated as the flank
+of a neighbouring band, not a peak.
+
+The noise estimate is chosen with `--noise`:
+
+| `--noise` | Noise is | Use for |
+|---|---|---|
+| `lag` (default from 0.5.0) | the larger of the point-to-point spread and the spread of differences between points 4 cm⁻¹ apart, away from the band | any spectrum, including ones the instrument software has smoothed |
+| `diff` (default up to 0.4.0) | the robust spread of point-to-point differences | raw, unsmoothed spectra; a little more sensitive there, but smoothing makes it see ripples as bands |
+| `scatter` | the larger of that and the spread of the window's corrected points | experiments only; it can hide a resolved triplet |
 
 In a window this narrow, a strong band pulls the polynomial fit into a slight bow: a little
 above the true background under the band, a little below it at the window edges. The local
@@ -142,27 +154,30 @@ the tests check that a band keeps most of its height.
 
 ## Checked against real spectra
 
-[docs/rruff-audit.md](docs/rruff-audit.md) runs the lead chromate marker of 0.4.0 over all
-5,787 processed spectra in the RRUFF mineral library (Lafuente et al. 2015):
+Two studies ran the lead chromate marker over all 5,787 processed spectra in the RRUFF mineral
+library (Lafuente et al. 2015):
 
-- **Crocoite:** 9 of 9 flagged. Maxima at 833.7-839.2 cm⁻¹, and the triplet was never resolved.
-- **Minerals without chromium:** 1,935 of 5,713 flagged. Only 346 of them have a band at 10%
-  or more of the spectrum's strongest. The rest are mostly small features that pass because
-  smoothing shrinks the point-to-point noise estimate.
-- **Real overlaps:** arsenates, vanadates, uranyl minerals, olivine-group silicates, and white
-  lead (cerussite, 17 of 17, a weak band at 837-839 cm⁻¹).
+- [docs/rruff-audit.md](docs/rruff-audit.md), on 0.4.0: 9 of 9 crocoite spectra flagged, but
+  also 1,935 of 5,713 spectra of minerals without chromium. White lead (cerussite) has a weak
+  band at 837-839 cm⁻¹ in all 17 of its spectra.
+- [docs/rruff-noise-rules.md](docs/rruff-noise-rules.md), which chose 0.5.0's noise estimate.
+  With `lag`, crocoite stays at 9 of 9 and minerals without chromium fall to about 663 of
+  5,713 (11.6%). On synthetic crocoite + filler mixtures, false flags on the filler alone fall
+  from 6.3% to 0.5%, and detection at 3% crocoite peak height falls from 80% to 67%. Gates on
+  band shape were also tested; they helped less and are not used.
 
-A fix for the noise estimate is being tested on the same library before it becomes the default.
+A re-audit of this exact release with the original audit script is under way, and the page
+will be updated with its counts.
 
 ## Limits
 
 - This is a **screen**, not a certified test. It has not been validated on real spice samples
-  yet; the tests use synthetic spectra, and the only real-spectrum check so far is the
-  mineral-library audit above. Treat a positive as a reason to test in a laboratory (ICP-MS
+  yet; the tests use synthetic spectra, and the only real-spectrum checks so far are the
+  mineral-library studies above. Treat a positive as a reason to test in a laboratory (ICP-MS
   or XRF for lead and chromium, HPLC for dyes), never as proof. Treat a negative as "not
   seen", never as "safe".
 - An 840 cm⁻¹ positive means "a chromate-like band". Other chromates, white lead and some
-  minerals also have bands there.
+  minerals (arsenates, vanadates, some phosphates and silicates) also have bands there.
 - Normal Raman sees lead chromate only at percent levels in ground powder (about 0.5%,
   roughly 3,200 µg/g lead). That is above many contaminated field samples. Measuring the
   surface of whole polished roots, where the pigment sits, or measuring before grinding,
@@ -177,6 +192,12 @@ A fix for the noise estimate is being tested on the same library before it becom
 
 ## Changes
 
+- **0.5.0** Default noise estimate is now `lag`, which smoothing cannot shrink. On the RRUFF
+  library, it keeps 9 of 9 crocoite spectra and cuts flags on minerals without chromium from
+  33.9% to 11.6% ([docs/rruff-noise-rules.md](docs/rruff-noise-rules.md)). The new `--noise`
+  option chooses `lag`, `diff` (the old behaviour, for raw spectra) or `scatter`, and each
+  report records the estimate it used in `noise`. The study's per-spectrum data are in
+  `docs/data/`.
 - **Docs (2026-10-14)** RRUFF library audit of 0.4.0 ([docs/rruff-audit.md](docs/rruff-audit.md)),
   with its script in `tools/rruff-audit/` and per-spectrum results in `docs/data/`.
 - **0.4.0** Lead chromate now also checks the 825 and 856 cm⁻¹ bands of the chromate triplet

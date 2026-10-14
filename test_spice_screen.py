@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import os
+import random
 import sys
 import tempfile
 import unittest
@@ -19,6 +20,8 @@ PS_BANDS = ((620.9, 150.0), (1001.4, 400.0), (1031.8, 100.0), (1602.3, 200.0))
 
 # Synthetic chromate triplet (positions from Frost 2004); the middle band strongest.
 CHROMATE_TRIPLET = ((840.0, 60.0), (825.0, 40.0), (856.0, 40.0))
+
+LEAD_CHROMATE = next(e for e in ss.LIBRARY if e["id"] == "lead_chromate")
 
 
 def verdicts(report):
@@ -52,6 +55,27 @@ def polystyrene_like(shift):
 
 def shifted(peaks, shift):
     return tuple((c + shift, h) for c, h in peaks)
+
+
+def white(n, seed=3):
+    rng = random.Random(seed)
+    return [rng.gauss(0.0, 1.0) for _ in range(n)]
+
+
+def moving_average(values, span):
+    return [sum(values[i:i + span]) / span for i in range(len(values) - span + 1)]
+
+
+def smoothed_ripple():
+    """A sloped background with white noise, then a 15-point moving average:
+    small smooth ripples and no band, like a software-smoothed spectrum."""
+    rng = random.Random(5)
+    x = [700.0 + 0.5 * i for i in range(601)]
+    raw = [1000.0 + 0.2 * (v - 700.0) + rng.gauss(0.0, 1.0) for v in x]
+    span = 15
+    y = moving_average(raw, span)
+    x = x[span // 2: span // 2 + len(y)]
+    return x, y
 
 
 class TestFit(unittest.TestCase):
@@ -100,6 +124,61 @@ class TestFit(unittest.TestCase):
         self.assertAlmostEqual(ss._vertex(9.0, 10.0, 11.0, *ys), 10.3)
 
 
+class TestNoise(unittest.TestCase):
+    def test_lagged_differences_on_white_noise(self):
+        v = white(4000)
+        for lag in (1, 3, 9):
+            self.assertGreater(ss.noise_sigma(v, lag), 0.85, lag)
+            self.assertLess(ss.noise_sigma(v, lag), 1.15, lag)
+        self.assertGreater(ss.robust_scatter(v), 0.85)
+        self.assertLess(ss.robust_scatter(v), 1.15)
+
+    def test_smoothing_hides_noise_from_point_to_point_differences(self):
+        # A 9-point moving average leaves a spread of 1/3, but neighbouring
+        # points differ by only about 1/9 of the original noise.
+        v = moving_average(white(4000), 9)
+        self.assertLess(ss.noise_sigma(v), 0.2)
+        self.assertGreater(ss.noise_sigma(v, 9), 0.27)
+        self.assertGreater(ss.robust_scatter(v), 0.27)
+
+    def test_unknown_mode_is_rejected(self):
+        with self.assertRaises(ValueError):
+            ss.local_noise([1.0, 2.0], [0.0, 0.0], [0.0, 0.0], "nope")
+
+    def test_robust_modes_are_never_below_diff(self):
+        x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
+        snr = {m: ss.check_band(x, y, 840.0, 8.0, 5.0, noise=m)["snr"] for m in ss.NOISE_MODES}
+        self.assertGreater(snr["diff"], 0.0)
+        self.assertLessEqual(snr["scatter"], snr["diff"])
+        self.assertLessEqual(snr["lag"], snr["diff"])
+
+    def test_smoothed_ripple_is_not_a_band_in_robust_modes(self):
+        x, y = smoothed_ripple()
+        for mode in ("scatter", "lag"):
+            r = ss.screen_entry(x, y, LEAD_CHROMATE, 5.0, noise=mode)
+            self.assertNotEqual(r["verdict"], "not-covered", mode)
+            self.assertNotEqual(r["verdict"], "screen-positive", mode)
+
+    def test_real_band_survives_every_mode(self):
+        x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
+        for mode in ss.NOISE_MODES:
+            report = ss.screen_spectrum(x, y, noise=mode)
+            self.assertEqual(report["noise"], mode)
+            self.assertEqual(result_for(report, "lead_chromate")["verdict"], "screen-positive", mode)
+
+    def test_default_is_lag(self):
+        # 0.5.0 default, chosen on the RRUFF library (docs/rruff-noise-rules.md).
+        self.assertEqual(ss.NOISE, "lag")
+        x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
+        self.assertEqual(ss.screen_spectrum(x, y)["noise"], "lag")
+
+    def test_smoothed_ripple_is_not_a_band_by_default(self):
+        x, y = smoothed_ripple()
+        r = ss.screen_entry(x, y, LEAD_CHROMATE, 5.0)
+        self.assertNotEqual(r["verdict"], "not-covered")
+        self.assertNotEqual(r["verdict"], "screen-positive")
+
+
 class TestScreen(unittest.TestCase):
     def test_clean_turmeric_is_not_detected(self):
         x, y = ss.synthetic_spectrum(TURMERIC)
@@ -119,7 +198,7 @@ class TestScreen(unittest.TestCase):
         self.assertTrue(abs(band["position"] - 840.0) <= 4.0)
 
     def test_lead_chromate_entry_carries_the_chromate_triplet(self):
-        entry = next(e for e in ss.LIBRARY if e["id"] == "lead_chromate")
+        entry = LEAD_CHROMATE
         for band in (825.0, 840.0, 856.0):
             self.assertIn(band, entry["bands"])
         self.assertEqual(entry["primary"], 840.0)
@@ -201,6 +280,7 @@ class TestScreen(unittest.TestCase):
         report = json.loads(json.dumps(ss.screen_spectrum(x, y)))
         self.assertIn("laboratory", report["disclaimer"])
         self.assertNotIn("calibration", report)
+        self.assertIn(report["noise"], ss.NOISE_MODES)
         for r in report["results"]:
             self.assertTrue(r["sources"])
             self.assertIn("bands_detected", r)
@@ -304,6 +384,13 @@ class TestCli(unittest.TestCase):
         code, out = self.run_main(["--demo"])
         self.assertEqual(code, 0)
         self.assertIn("SCREEN-POSITIVE", out)
+
+    def test_demo_with_each_noise_mode(self):
+        for mode in ss.NOISE_MODES:
+            code, out = self.run_main(["--demo", "--noise", mode])
+            self.assertEqual(code, 0)
+            self.assertIn("SCREEN-POSITIVE", out, mode)
+            self.assertIn("noise=%s" % mode, out)
 
     def test_file_json_and_exit_code(self):
         x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
