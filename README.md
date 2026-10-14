@@ -6,6 +6,13 @@ looks for each adulterant's published marker bands. Every marker comes with its 
 its reported detection limit. It can also check an instrument's Raman shift axis against
 polystyrene and screen a whole folder of spectra into one CSV table.
 
+> **Audit note (2026-10-14).** Checked against the whole RRUFF Raman library, 0.4.0 found
+> every real lead chromate (crocoite) spectrum, but it also flagged 34% of the spectra of
+> minerals without chromium. Most of those flags come from a noise estimate that smoothing
+> fools, and a fix is in testing. Some are real bands of other minerals at 840 cm⁻¹,
+> including white lead (cerussite). Read [docs/rruff-audit.md](docs/rruff-audit.md) before
+> relying on a positive from a smoothed spectrum.
+
 ## Why
 
 Lead chromate is a yellow pigment that is added to turmeric and other spices to brighten
@@ -26,8 +33,9 @@ their colour. It poisons the people who eat them.
   [CDC](https://www.cdc.gov/lead-prevention/php/news-features/lead-and-chromium-poisoning-outbreak.html)).
 
 Screening is what worked in Bangladesh, but new handheld XRF analyzers cost about
-$20,000-65,000. Pocket Raman devices cost far less, and the pigment has a strong, isolated
-Raman band at 840 cm⁻¹. This tool turns a spectrum from any Raman device into a cited,
+$20,000-65,000. Pocket Raman devices cost far less. The pigment has a strong Raman band at
+840 cm⁻¹, which turmeric itself lacks, although some minerals and white lead also show bands
+there (see the audit). This tool turns a spectrum from any Raman device into a cited,
 cautious screening call.
 
 Illegal dyes are the other half of spice fraud: metanil yellow and auramine O in turmeric,
@@ -110,6 +118,8 @@ on a handheld instrument. Requiring two of them would turn real positives into
 `inconclusive`. The 825 and 856 cm⁻¹ bands are checked and reported for confirmation: when an
 instrument resolves them, a `3/3 bands` positive is stronger evidence that the 840 cm⁻¹
 feature really is chromate. See [docs/lead-chromate-raman.md](docs/lead-chromate-raman.md).
+In all nine RRUFF crocoite spectra the triplet was one broad envelope, with no separate
+bands, so in practice expect `1/3 bands` ([docs/rruff-audit.md](docs/rruff-audit.md)).
 
 Auramine O's 1598 cm⁻¹ band is left out on purpose, because curcumin's strong bands near
 1600 cm⁻¹ overlap it in turmeric.
@@ -130,12 +140,29 @@ above the true background under the band, a little below it at the window edges.
 offset (the median of the corrected points away from the band) absorbs most of that, and
 the tests check that a band keeps most of its height.
 
+## Checked against real spectra
+
+[docs/rruff-audit.md](docs/rruff-audit.md) runs the lead chromate marker of 0.4.0 over all
+5,787 processed spectra in the RRUFF mineral library (Lafuente et al. 2015):
+
+- **Crocoite:** 9 of 9 flagged. Maxima at 833.7-839.2 cm⁻¹, and the triplet was never resolved.
+- **Minerals without chromium:** 1,935 of 5,713 flagged. Only 346 of them have a band at 10%
+  or more of the spectrum's strongest. The rest are mostly small features that pass because
+  smoothing shrinks the point-to-point noise estimate.
+- **Real overlaps:** arsenates, vanadates, uranyl minerals, olivine-group silicates, and white
+  lead (cerussite, 17 of 17, a weak band at 837-839 cm⁻¹).
+
+A fix for the noise estimate is being tested on the same library before it becomes the default.
+
 ## Limits
 
-- This is a **screen**, not a certified test. It has not been validated on real samples
-  yet; the tests use synthetic spectra. Treat a positive as a reason to test in a
-  laboratory (ICP-MS or XRF for lead and chromium, HPLC for dyes), never as proof. Treat
-  a negative as "not seen", never as "safe".
+- This is a **screen**, not a certified test. It has not been validated on real spice samples
+  yet; the tests use synthetic spectra, and the only real-spectrum check so far is the
+  mineral-library audit above. Treat a positive as a reason to test in a laboratory (ICP-MS
+  or XRF for lead and chromium, HPLC for dyes), never as proof. Treat a negative as "not
+  seen", never as "safe".
+- An 840 cm⁻¹ positive means "a chromate-like band". Other chromates, white lead and some
+  minerals also have bands there.
 - Normal Raman sees lead chromate only at percent levels in ground powder (about 0.5%,
   roughly 3,200 µg/g lead). That is above many contaminated field samples. Measuring the
   surface of whole polished roots, where the pigment sits, or measuring before grinding,
@@ -150,6 +177,8 @@ the tests check that a band keeps most of its height.
 
 ## Changes
 
+- **Docs (2026-10-14)** RRUFF library audit of 0.4.0 ([docs/rruff-audit.md](docs/rruff-audit.md)),
+  with its script in `tools/rruff-audit/` and per-spectrum results in `docs/data/`.
 - **0.4.0** Lead chromate now also checks the 825 and 856 cm⁻¹ bands of the chromate triplet
   (Frost 2004) for confirmation. 840 alone still flags, so sensitivity is unchanged. Each
   marker reports `bands_detected`, and the text report shows it as `n/m bands`.
