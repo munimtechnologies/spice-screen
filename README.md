@@ -12,6 +12,10 @@ polystyrene and screen a whole folder of spectra into one CSV table.
 > estimate that smoothing cannot shrink. It still finds 9 of 9 crocoite spectra and flags
 > 11.6% of the minerals without chromium. Most of the remaining flags are real bands of other
 > minerals at 840 cm⁻¹, including white lead. See [docs/rruff-noise-rules.md](docs/rruff-noise-rules.md).
+>
+> **In development (0.6.0.dev0): grain mode** for picked yellow-orange particles. It asks for
+> lead chromate's whole band pattern, not just a band near 840 cm⁻¹. Its rule was published
+> before the library audit that tests it. See [Grain mode](#grain-mode-in-development) below.
 
 ## Why
 
@@ -58,6 +62,7 @@ python spice_screen.py "market-survey/*.csv" --csv  # one row per spectrum, for 
 python spice_screen.py --calibrate polystyrene.csv  # check the instrument's shift axis
 python spice_screen.py spectrum.csv --calibrate polystyrene.csv   # screen on a corrected axis
 python spice_screen.py spectrum.csv --noise diff    # raw, unsmoothed spectra (more sensitive)
+python spice_screen.py grain.csv --grain --laser 808  # a picked particle (in development)
 python spice_screen.py --list                       # the marker library and its sources
 python spice_screen.py --demo                       # a synthetic example
 python -m unittest -v                               # tests, offline
@@ -72,7 +77,7 @@ Each adulterant gets one of these verdicts:
 | Verdict | Meaning |
 |---|---|
 | `screen-positive` | The primary band and enough supporting bands stand above the noise (default SNR ≥ 5). Send the sample to a laboratory. |
-| `inconclusive` | Some marker bands are present but not enough of them. Re-measure, or test in a laboratory. |
+| `inconclusive` | Some marker bands are present but not enough of them (or, in grain mode, the band shape does not match). Re-measure, or test in a laboratory. |
 | `not-detected` | No marker band was found. This means "below what the screen can see", not "safe". |
 | `not-covered` | The spectrum does not cover the primary band. |
 
@@ -101,6 +106,27 @@ that the spectrum covers. It refines each band's position with a parabola throug
 three points and reports the error at each band against the ±1.5 cm⁻¹ tolerance. It then
 fits a straight-line correction (an offset alone if only one band is found) and screens the
 sample spectra on the corrected axis. Each report records the correction it used.
+
+### Grain mode (in development)
+
+Most leaded spice holds too little pigment for powder Raman to see. Picking out the bright
+yellow-orange particles and measuring them one by one, the route FDA scientists used for
+cinnamon ([Kubachka et al. 2026](https://doi.org/10.1177/27551857261425269)), puts mostly
+pure pigment under the laser. With `--grain`, a lead chromate positive must then also show
+the pigment's band pattern:
+
+- **apex**: the strongest point of 790-890 cm⁻¹ lies at 830-850 cm⁻¹;
+- **dominance**: the 840 band is at least half the strongest band in 200-1100 cm⁻¹ (curcumin's
+  bands lie above 1100 cm⁻¹, so turmeric dust does not count against it);
+- **bend**: with `--laser` 700 nm or longer, chromate's bending bands at 320-410 cm⁻¹ reach 15%
+  of the 840 band. In the RRUFF crocoite spectra they are 58-82% of it under 780/785 nm
+  lasers but only 4-13% under 514/532 nm, so the gate is not applied to green lasers.
+
+If a gate fails, the verdict is `inconclusive` and the report says which gate failed. The
+JSON report carries the measured values under `grain`. The rule, its thresholds and the
+expected audit results were published before the audit was run:
+[docs/grain-mode.md](docs/grain-mode.md). Treat this mode as experimental until that page
+has its results.
 
 ## Marker library
 
@@ -152,6 +178,10 @@ above the true background under the band, a little below it at the window edges.
 offset (the median of the corrected points away from the band) absorbs most of that, and
 the tests check that a band keeps most of its height.
 
+Grain mode measures the apex and the bending bands above straight lines through the lowest
+points on either side, as in the band-shape study, and the dominance on a rolling-ball
+baseline (a morphological opening ±60 cm⁻¹ wide) across 200-1100 cm⁻¹.
+
 ## Checked against real spectra
 
 Two studies ran the lead chromate marker over all 5,787 processed spectra in the RRUFF mineral
@@ -164,10 +194,11 @@ library (Lafuente et al. 2015):
   With `lag`, crocoite stays at 9 of 9 and minerals without chromium fall to about 663 of
   5,713 (11.6%). On synthetic crocoite + filler mixtures, false flags on the filler alone fall
   from 6.3% to 0.5%, and detection at 3% crocoite peak height falls from 80% to 67%. Gates on
-  band shape were also tested; they helped less and are not used.
+  band shape were also tested; they helped less and are not used in the normal mode.
 
-A re-audit of this exact release with the original audit script is under way, and the page
-will be updated with its counts.
+A re-audit of 0.5.0 with the original audit script, and the audit of grain mode
+([docs/grain-mode.md](docs/grain-mode.md)), are queued, and this page will be updated with
+their counts.
 
 ## Limits
 
@@ -180,8 +211,12 @@ will be updated with its counts.
   minerals (arsenates, vanadates, some phosphates and silicates) also have bands there.
 - Normal Raman sees lead chromate only at percent levels in ground powder (about 0.5%,
   roughly 3,200 µg/g lead). That is above many contaminated field samples. Measuring the
-  surface of whole polished roots, where the pigment sits, or measuring before grinding,
-  should help. Validating that is the next step.
+  surface of whole polished roots, where the pigment sits, or picked particles in grain
+  mode, should help. Validating that is the next step.
+- Grain mode is meant for particles that are mostly pigment. On ground powder it rejects true
+  lead chromate whenever another mineral band is stronger, by design. Its thresholds come
+  from mineral spectra; chrome yellow pigments mixed with lead sulfate, and real picked
+  grains, have not been measured yet.
 - Band positions vary by a few cm⁻¹ between instruments, and SERS bands also vary with the
   substrate, solvent and pH. Use `--calibrate` for the instrument, and check a known
   reference sample on your substrate first.
@@ -192,6 +227,11 @@ will be updated with its counts.
 
 ## Changes
 
+- **0.6.0.dev0 (unreleased)** Grain mode (`--grain`, `--laser`) for picked particles: apex,
+  dominance and laser-dependent bending-band gates on top of the 840 cm⁻¹ check, with the
+  rule pre-registered in [docs/grain-mode.md](docs/grain-mode.md) and its audit tool in
+  `tools/rruff-grain/`. Normal mode is unchanged. `tools/rruff-audit/audit_local.py`, listed
+  in `tools/README.md` since 0.5.0, is now in the repository.
 - **0.5.0** Default noise estimate is now `lag`, which smoothing cannot shrink. On the RRUFF
   library, it keeps 9 of 9 crocoite spectra and cuts flags on minerals without chromium from
   33.9% to 11.6% ([docs/rruff-noise-rules.md](docs/rruff-noise-rules.md)). The new `--noise`

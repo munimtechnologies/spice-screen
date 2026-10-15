@@ -22,6 +22,7 @@ Usage:
     python spice_screen.py --calibrate polystyrene.csv   # check the shift axis
     python spice_screen.py spectrum.csv --calibrate polystyrene.csv
     python spice_screen.py spectrum.csv --noise diff     # raw, unsmoothed spectra (see local_noise)
+    python spice_screen.py grain.csv --grain --laser 808 # a picked yellow particle (see grain_check)
     python spice_screen.py --list                        # marker library with sources
     python spice_screen.py --demo                        # synthetic example
 
@@ -35,8 +36,9 @@ import glob
 import json
 import math
 import sys
+from collections import deque
 
-__version__ = "0.5.0"
+__version__ = "0.6.0.dev0"
 
 # Half-width (cm-1) of the local window used for baseline and noise around a band.
 WINDOW = 60.0
@@ -50,6 +52,23 @@ NOISE_MODES = ("diff", "scatter", "lag")
 # Lag (cm-1) for the "lag" noise estimate: longer than the smoothing that
 # instrument software applies, shorter than a Raman band.
 LAG_CM1 = 4.0
+
+# Grain mode (see grain_check). Thresholds were fixed and published before the
+# RRUFF audit that tests them (docs/grain-mode.md); change them only with a new audit.
+GRAIN = {
+    "stretch_left": (780.0, 815.0),    # side windows for the local line under the 840 band
+    "stretch_right": (865.0, 900.0),
+    "apex_search": (790.0, 890.0),     # the strongest point here must lie in apex_range
+    "apex_range": (830.0, 850.0),
+    "fingerprint": (200.0, 1100.0),    # the 840 band must dominate this region
+    "dominance_min": 0.5,
+    "half_width": 60.0,                # rolling-ball half-width for the fingerprint
+    "bend_left": (260.0, 315.0),       # side windows for the local line under the bends
+    "bend_right": (415.0, 470.0),
+    "bend_range": (320.0, 410.0),
+    "bend_ratio_min": 0.15,
+    "bend_laser_min_nm": 700.0,        # the bend gate applies from this laser wavelength up
+}
 
 DISCLAIMER = (
     "Screening result only. A positive must be confirmed by a laboratory method "
@@ -213,6 +232,13 @@ POLYSTYRENE = {
 # Not reference data.
 TURMERIC_LIKE = ((1601.0, 120.0), (1626.0, 70.0), (1250.0, 40.0))
 
+# Synthetic stand-in for a picked lead chromate grain under a near-infrared
+# laser: the chromate triplet and the bending bands at 400, 377, 357, 338 and
+# 327 cm-1 (positions from Frost 2004). Used by --demo --grain and the tests.
+# Not reference data.
+CHROMATE_GRAIN_LIKE = ((840.0, 200.0), (825.0, 70.0), (856.0, 60.0), (400.0, 60.0), (377.0, 90.0),
+                       (357.0, 120.0), (338.0, 80.0), (327.0, 50.0))
+
 
 def _solve(a, b):
     """Solve a small dense linear system by Gaussian elimination."""
@@ -370,6 +396,128 @@ def check_band(x, y, center, tol, snr_min, window=WINDOW, noise=None):
     return res
 
 
+def _sliding(x, y, half, sign):
+    """Running maximum (sign 1) or minimum (sign -1) of y over the points
+    within +/- `half` cm-1 of each point. x must be sorted."""
+    out = []
+    dq = deque()
+    hi = 0
+    n = len(x)
+    for i in range(n):
+        while hi < n and x[hi] <= x[i] + half:
+            while dq and sign * y[dq[-1]] <= sign * y[hi]:
+                dq.pop()
+            dq.append(hi)
+            hi += 1
+        while x[dq[0]] < x[i] - half:
+            dq.popleft()
+        out.append(y[dq[0]])
+    return out
+
+
+def tophat(x, y, half):
+    """Height of each point above a rolling-ball baseline (a morphological
+    opening with a flat element +/- `half` cm-1 wide). Bands narrower than
+    about 2 x half keep most of their height; slower background goes to zero."""
+    opened = _sliding(x, _sliding(x, y, half, -1), half, 1)
+    return [a - b for a, b in zip(y, opened)]
+
+
+def _line_under(x, y, left, right):
+    """(x0, y0, slope) of the line through the lowest point of each side
+    window, or None if either window is empty."""
+    lw = [(a, b) for a, b in zip(x, y) if left[0] <= a <= left[1]]
+    rw = [(a, b) for a, b in zip(x, y) if right[0] <= a <= right[1]]
+    if not lw or not rw:
+        return None
+    x0, y0 = min(lw, key=lambda p: p[1])
+    x1, y1 = min(rw, key=lambda p: p[1])
+    if x1 <= x0:
+        return None
+    return x0, y0, (y1 - y0) / (x1 - x0)
+
+
+def _above_line(x, y, lo, hi, line):
+    """[(height above the line, shift)] for lo <= x <= hi."""
+    x0, y0, k = line
+    return [(b - (y0 + k * (a - x0)), a) for a, b in zip(x, y) if lo <= a <= hi]
+
+
+def grain_check(x, y, snr_min=5.0, noise=None, laser_nm=None, band=None, params=None):
+    """Grain mode: does the 840 cm-1 band look like lead chromate pigment's
+    whole pattern? Meant for picked yellow-orange particles, which should be
+    mostly pigment, so a band near 840 cm-1 is not enough. Gates:
+
+    - apex: above a line through the lowest points of 780-815 and 865-900
+      cm-1, the strongest point of 790-890 cm-1 lies at 830-850 cm-1, so the
+      band is not the flank of a stronger neighbour (vanadates near 827 cm-1);
+    - dominance: on a rolling-ball baseline, the 840 band is at least half
+      the strongest band in 200-1100 cm-1, the mineral fingerprint. Curcumin's
+      strong bands lie above 1100 cm-1, so a turmeric coating does not count;
+    - bend: chromate's bending bands (320-410 cm-1, above a line through the
+      lowest points of 260-315 and 415-470 cm-1) reach 15% of the 840 band.
+      Required only for lasers of 700 nm or longer. Under green lasers the
+      840 band is resonance-enhanced and the bends are weak: in the RRUFF
+      crocoite spectra this ratio is 0.04-0.13 at 514/532 nm and 0.58-0.82 at
+      780/785 nm (docs/data/band-shape). A spectrum without both side windows
+      skips the gate, and the result says so.
+
+    `band` is check_band()'s result at 840 cm-1, if already computed.
+    Returns a dict; its verdict is screen-positive only if every gate passes."""
+    g = GRAIN if params is None else params
+    if band is None:
+        band = check_band(x, y, 840.0, 8.0, snr_min, noise=noise)
+    res = {"verdict": "not-covered", "laser_nm": laser_nm, "apex": None, "apex_ok": None,
+           "dominance": None, "dominance_ok": None, "bend_ratio": None, "bend_ok": None,
+           "bend_required": bool(laser_nm and laser_nm >= g["bend_laser_min_nm"]),
+           "failed": [], "skipped": []}
+    if not band["covered"]:
+        return res
+    if not band["detected"]:
+        res["verdict"] = "not-detected"
+        return res
+    line = _line_under(x, y, g["stretch_left"], g["stretch_right"])
+    if line is None:
+        return res
+    stretch = _above_line(x, y, g["apex_search"][0], g["apex_search"][1], line)
+    apex_h, apex_x = max(stretch)
+    near = [h for h, v in stretch if abs(v - 840.0) <= 8.0]
+    h840 = max(near) if near else 0.0
+    res["apex"] = round(apex_x, 2)
+    res["apex_ok"] = g["apex_range"][0] <= apex_x <= g["apex_range"][1]
+
+    half = g["half_width"]
+    lo, hi = g["fingerprint"]
+    idx = [i for i, v in enumerate(x) if lo - half <= v <= hi + half]
+    xs = [x[i] for i in idx]
+    th = tophat(xs, [y[i] for i in idx], half)
+    finger = [t for v, t in zip(xs, th) if lo <= v <= hi]
+    at840 = [t for v, t in zip(xs, th) if abs(v - 840.0) <= 8.0]
+    top = max(finger) if finger else 0.0
+    res["dominance"] = round(max(at840) / top, 4) if at840 and top > 0 else 0.0
+    res["dominance_ok"] = res["dominance"] >= g["dominance_min"]
+
+    bline = _line_under(x, y, g["bend_left"], g["bend_right"])
+    if bline is not None and h840 > 0:
+        bend = _above_line(x, y, g["bend_range"][0], g["bend_range"][1], bline)
+        if bend:
+            res["bend_ratio"] = round(max(bend)[0] / h840, 4)
+            res["bend_ok"] = res["bend_ratio"] >= g["bend_ratio_min"]
+
+    if not res["apex_ok"]:
+        res["failed"].append("apex")
+    if not res["dominance_ok"]:
+        res["failed"].append("dominance")
+    if res["bend_required"]:
+        if res["bend_ok"] is None:
+            res["skipped"].append("bend (spectrum does not cover %g-%g cm-1)"
+                                  % (g["bend_left"][0], g["bend_right"][1]))
+        elif not res["bend_ok"]:
+            res["failed"].append("bend")
+    res["verdict"] = "inconclusive" if res["failed"] else "screen-positive"
+    return res
+
+
 def _vertex(x0, x1, x2, y0, y1, y2):
     """x of the top of the parabola through three points (x1 if it opens upward)."""
     d = (x0 - x1) * (x0 - x2) * (x1 - x2)
@@ -511,10 +659,14 @@ def overall_result(results):
     return "not-covered"
 
 
-def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=None, noise=None):
+def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=None, noise=None,
+                    grain=False, laser_nm=None):
     """Screen one spectrum. Returns a JSON-ready report. `calibration` is an
     optional calibrate() result; the shift axis is corrected with it first.
-    `noise` picks the noise estimate (see local_noise); None means NOISE."""
+    `noise` picks the noise estimate (see local_noise); None means NOISE.
+    With `grain`, a lead chromate positive must also pass grain_check(), at
+    excitation wavelength `laser_nm` (nm, or None if unknown); if it does not,
+    the verdict becomes inconclusive."""
     if len(x) != len(y) or len(x) < 15:
         raise ValueError("need at least 15 points with matching x and y")
     if calibration is not None:
@@ -522,6 +674,15 @@ def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=N
     lib = LIBRARY if library is None else library
     noise = NOISE if noise is None else noise
     results = [screen_entry(x, y, e, snr_min, noise) for e in lib if e["mode"] == mode]
+    if grain:
+        for r in results:
+            if r["id"] != "lead_chromate":
+                continue
+            primary = next((b for b in r["bands"] if b["center"] == 840.0), None)
+            g = grain_check(x, y, snr_min, noise, laser_nm, band=primary)
+            r["grain"] = g
+            if r["verdict"] == "screen-positive" and g["verdict"] != "screen-positive":
+                r["verdict"] = "inconclusive"
     positives = [r["name"] for r in results if r["verdict"] == "screen-positive"]
     partial = [r["name"] for r in results if r["verdict"] == "inconclusive"]
     if positives:
@@ -543,6 +704,9 @@ def screen_spectrum(x, y, mode="raman", snr_min=5.0, library=None, calibration=N
         "summary": summary,
         "disclaimer": DISCLAIMER,
     }
+    if grain:
+        report["grain"] = True
+        report["laser_nm"] = laser_nm
     if calibration is not None:
         report["calibration"] = calibration
     return report
@@ -627,12 +791,32 @@ def format_calibration(cal):
     return "\n".join(lines)
 
 
+def _bend_text(g):
+    if g["bend_ratio"] is None:
+        return "not covered" + (", gate skipped" if g["bend_required"] else "")
+    state = "ok" if g["bend_ok"] else "low"
+    if not g["bend_required"]:
+        state += ", not required below %g nm" % GRAIN["bend_laser_min_nm"]
+    return "%.2f (%s)" % (g["bend_ratio"], state)
+
+
+def format_grain(g):
+    """One line describing a grain_check() result."""
+    if g["verdict"] in ("not-covered", "not-detected"):
+        return "    grain mode: no 840 cm-1 band to check"
+    return ("    grain mode: apex %.0f cm-1 (%s), dominance %.2f (%s), bend %s -> %s"
+            % (g["apex"], "ok" if g["apex_ok"] else "off", g["dominance"],
+               "ok" if g["dominance_ok"] else "low", _bend_text(g), g["verdict"].upper()))
+
+
 def format_report(report):
-    lines = [
-        "spice-screen %s  mode=%s  range %.0f-%.0f cm-1  %d points  SNR >= %g  noise=%s"
-        % (report["version"], report["mode"], report["range_cm1"][0], report["range_cm1"][1],
-           report["points"], report["snr_threshold"], report.get("noise", NOISE))
-    ]
+    head = ("spice-screen %s  mode=%s  range %.0f-%.0f cm-1  %d points  SNR >= %g  noise=%s"
+            % (report["version"], report["mode"], report["range_cm1"][0], report["range_cm1"][1],
+               report["points"], report["snr_threshold"], report.get("noise", NOISE)))
+    if report.get("grain"):
+        laser = report.get("laser_nm")
+        head += "  grain mode, laser %s" % (("%g nm" % laser) if laser else "unknown")
+    lines = [head]
     cal = report.get("calibration")
     if cal:
         lines.append("  shift axis corrected against %s: largest error was %.1f cm-1 over %d bands (%s +/-%g)"
@@ -645,6 +829,8 @@ def format_report(report):
         )
         lines.append("  %-24s %-16s %d/%d bands  %s"
                      % (r["id"], r["verdict"].upper(), r["bands_detected"], len(r["bands"]), bands))
+        if "grain" in r:
+            lines.append(format_grain(r["grain"]))
     lines.append(report["summary"])
     lines.append(report["disclaimer"])
     return "\n".join(lines)
@@ -683,6 +869,12 @@ def main(argv=None):
     ap.add_argument("--snr", type=float, default=5.0, help="peak signal-to-noise needed (default 5)")
     ap.add_argument("--noise", choices=NOISE_MODES, default=None,
                     help="noise estimate a band must stand above (default %s)" % NOISE)
+    ap.add_argument("--grain", action="store_true",
+                    help="grain mode, for a picked yellow-orange particle: a lead chromate positive must "
+                         "also have the pigment's band shape (docs/grain-mode.md)")
+    ap.add_argument("--laser", type=float, default=None, metavar="NM",
+                    help="excitation wavelength in nm; with --grain, %g nm or more also requires "
+                         "chromate's bending bands" % GRAIN["bend_laser_min_nm"])
     ap.add_argument("--library", help="JSON file with your own marker list (same fields as --list)")
     ap.add_argument("--calibrate", metavar="POLYSTYRENE",
                     help="polystyrene spectrum from the same instrument: check the shift axis "
@@ -693,6 +885,10 @@ def main(argv=None):
     ap.add_argument("--list", action="store_true", help="print the marker library and its sources")
     ap.add_argument("--demo", action="store_true", help="screen a synthetic turmeric spectrum with an 840 cm-1 band")
     args = ap.parse_args(argv)
+
+    if args.grain and args.mode != "raman":
+        print("error: --grain works with normal Raman spectra only", file=sys.stderr)
+        return 2
 
     library = LIBRARY
     if args.library:
@@ -720,9 +916,10 @@ def main(argv=None):
             return 0
 
     if args.demo:
-        x, y = synthetic_spectrum(TURMERIC_LIKE + ((840.0, 40.0),))
+        peaks = CHROMATE_GRAIN_LIKE if args.grain else TURMERIC_LIKE + ((840.0, 40.0),)
+        x, y = synthetic_spectrum(peaks)
         report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal,
-                                 noise=args.noise)
+                                 noise=args.noise, grain=args.grain, laser_nm=args.laser)
         print(json.dumps(report, indent=2) if args.json else format_report(report))
         if args.exit_code and report["result"] == "screen-positive":
             return 1
@@ -742,7 +939,7 @@ def main(argv=None):
             done.append((path, None, str(exc)))
             continue
         report = screen_spectrum(x, y, mode=args.mode, snr_min=args.snr, library=library, calibration=cal,
-                                 noise=args.noise)
+                                 noise=args.noise, grain=args.grain, laser_nm=args.laser)
         done.append((path, report, ""))
 
     if args.csv:

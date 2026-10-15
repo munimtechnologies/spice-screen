@@ -21,6 +21,9 @@ PS_BANDS = ((620.9, 150.0), (1001.4, 400.0), (1031.8, 100.0), (1602.3, 200.0))
 # Synthetic chromate triplet (positions from Frost 2004); the middle band strongest.
 CHROMATE_TRIPLET = ((840.0, 60.0), (825.0, 40.0), (856.0, 40.0))
 
+# A picked grain without its bending bands: what crocoite looks like under a green laser.
+GRAIN_NO_BENDS = tuple(p for p in ss.CHROMATE_GRAIN_LIKE if p[0] > 700.0)
+
 LEAD_CHROMATE = next(e for e in ss.LIBRARY if e["id"] == "lead_chromate")
 
 
@@ -76,6 +79,12 @@ def smoothed_ripple():
     y = moving_average(raw, span)
     x = x[span // 2: span // 2 + len(y)]
     return x, y
+
+
+def grain(peaks, laser_nm=None, **kw):
+    """grain_check() on a synthetic spectrum with these peaks."""
+    x, y = ss.synthetic_spectrum(peaks, **kw)
+    return ss.grain_check(x, y, laser_nm=laser_nm)
 
 
 class TestFit(unittest.TestCase):
@@ -280,14 +289,120 @@ class TestScreen(unittest.TestCase):
         report = json.loads(json.dumps(ss.screen_spectrum(x, y)))
         self.assertIn("laboratory", report["disclaimer"])
         self.assertNotIn("calibration", report)
+        self.assertNotIn("grain", report)
         self.assertIn(report["noise"], ss.NOISE_MODES)
         for r in report["results"]:
             self.assertTrue(r["sources"])
             self.assertIn("bands_detected", r)
+            self.assertNotIn("grain", r)
 
     def test_rejects_tiny_input(self):
         with self.assertRaises(ValueError):
             ss.screen_spectrum([1.0, 2.0], [1.0, 2.0])
+
+
+class TestGrain(unittest.TestCase):
+    def test_sliding_extremes_match_brute_force(self):
+        rng = random.Random(11)
+        x = sorted(rng.uniform(0.0, 300.0) for _ in range(200))
+        y = [rng.gauss(0.0, 1.0) for _ in x]
+        hi = ss._sliding(x, y, 15.0, 1)
+        lo = ss._sliding(x, y, 15.0, -1)
+        for i, v in enumerate(x):
+            win = [b for a, b in zip(x, y) if abs(a - v) <= 15.0]
+            self.assertEqual(hi[i], max(win))
+            self.assertEqual(lo[i], min(win))
+
+    def test_tophat_keeps_a_band_and_drops_a_slope(self):
+        # On a gentle slope the band keeps nearly all its height. (On a steep one
+        # the rolling ball rides up the band's far side; see docs/grain-mode.md.)
+        x = [float(i) for i in range(401)]
+        y = [10.0 + 0.02 * v + 50.0 / (1 + ((v - 200.0) / 5.0) ** 2) for v in x]
+        th = ss.tophat(x, y, 60.0)
+        self.assertGreater(th[200], 45.0)
+        self.assertLess(th[200], 51.0)
+        self.assertLess(abs(th[100]), 1.0)
+        self.assertLess(abs(th[300]), 1.0)
+        self.assertTrue(all(t >= 0.0 for t in th))
+
+    def test_thresholds_are_the_published_ones(self):
+        # Fixed before the RRUFF audit (docs/grain-mode.md); change only with a new audit.
+        g = ss.GRAIN
+        self.assertEqual(g["apex_range"], (830.0, 850.0))
+        self.assertEqual(g["dominance_min"], 0.5)
+        self.assertEqual(g["fingerprint"], (200.0, 1100.0))
+        self.assertEqual(g["bend_ratio_min"], 0.15)
+        self.assertEqual(g["bend_laser_min_nm"], 700.0)
+
+    def test_chromate_grain_passes_under_a_near_infrared_laser(self):
+        g = grain(ss.CHROMATE_GRAIN_LIKE, laser_nm=808.0)
+        self.assertEqual(g["verdict"], "screen-positive", g)
+        self.assertTrue(830.0 <= g["apex"] <= 850.0)
+        self.assertGreaterEqual(g["dominance"], 0.9)
+        self.assertTrue(g["bend_required"])
+        self.assertGreater(g["bend_ratio"], 0.3)
+        self.assertEqual(g["failed"], [])
+
+    def test_missing_bends_fail_only_under_near_infrared(self):
+        g = grain(GRAIN_NO_BENDS, laser_nm=808.0)
+        self.assertEqual(g["verdict"], "inconclusive")
+        self.assertEqual(g["failed"], ["bend"])
+        self.assertLess(g["bend_ratio"], 0.15)
+        for laser in (532.0, None):
+            g = grain(GRAIN_NO_BENDS, laser_nm=laser)
+            self.assertEqual(g["verdict"], "screen-positive", laser)
+            self.assertFalse(g["bend_required"])
+
+    def test_stronger_neighbour_fails_the_apex_gate(self):
+        # A vanadate-like band at 822 cm-1 next to a weaker one at 845.
+        g = grain(((822.0, 100.0), (845.0, 80.0)))
+        self.assertEqual(g["verdict"], "inconclusive")
+        self.assertEqual(g["failed"], ["apex"])
+        self.assertLess(g["apex"], 830.0)
+
+    def test_small_840_band_beside_a_strong_mineral_band_fails_dominance(self):
+        # Calcite-like: a strong band at 1086 cm-1 and a small one at 840.
+        g = grain(((1086.0, 300.0), (840.0, 40.0)))
+        self.assertEqual(g["verdict"], "inconclusive")
+        self.assertEqual(g["failed"], ["dominance"])
+        self.assertLess(g["dominance"], 0.3)
+
+    def test_turmeric_bands_do_not_count_against_dominance(self):
+        g = grain(TURMERIC + ((840.0, 40.0),))
+        self.assertEqual(g["verdict"], "screen-positive")
+        self.assertGreaterEqual(g["dominance"], 0.9)
+
+    def test_bend_gate_is_skipped_and_reported_when_not_covered(self):
+        g = grain(ss.CHROMATE_GRAIN_LIKE, laser_nm=808.0, start=430.0)
+        self.assertIsNone(g["bend_ratio"])
+        self.assertEqual(g["verdict"], "screen-positive")
+        self.assertEqual(len(g["skipped"]), 1)
+        self.assertIn("bend", g["skipped"][0])
+
+    def test_no_band_and_no_coverage(self):
+        self.assertEqual(grain(TURMERIC)["verdict"], "not-detected")
+        self.assertEqual(grain(TURMERIC, start=1000.0)["verdict"], "not-covered")
+
+    def test_grain_mode_downgrades_a_plain_positive(self):
+        x, y = ss.synthetic_spectrum(((1086.0, 300.0), (840.0, 40.0)))
+        plain = ss.screen_spectrum(x, y)
+        self.assertEqual(verdicts(plain)["lead_chromate"], "screen-positive")
+        report = ss.screen_spectrum(x, y, grain=True, laser_nm=808.0)
+        self.assertTrue(report["grain"])
+        self.assertEqual(report["laser_nm"], 808.0)
+        r = result_for(report, "lead_chromate")
+        self.assertEqual(r["verdict"], "inconclusive")
+        self.assertIn("dominance", r["grain"]["failed"])
+        self.assertEqual(report["result"], "inconclusive")
+        self.assertIn("grain mode", ss.format_report(report))
+        json.dumps(report)
+
+    def test_grain_mode_keeps_a_chromate_grain_positive(self):
+        x, y = ss.synthetic_spectrum(ss.CHROMATE_GRAIN_LIKE)
+        report = ss.screen_spectrum(x, y, grain=True, laser_nm=808.0)
+        self.assertEqual(verdicts(report)["lead_chromate"], "screen-positive")
+        self.assertEqual(verdicts(report)["metanil_yellow_raman"], "not-detected")
+        self.assertIn("SCREEN-POSITIVE", ss.format_grain(result_for(report, "lead_chromate")["grain"]))
 
 
 class TestCalibration(unittest.TestCase):
@@ -384,6 +499,7 @@ class TestCli(unittest.TestCase):
         code, out = self.run_main(["--demo"])
         self.assertEqual(code, 0)
         self.assertIn("SCREEN-POSITIVE", out)
+        self.assertNotIn("grain mode", out)
 
     def test_demo_with_each_noise_mode(self):
         for mode in ss.NOISE_MODES:
@@ -391,6 +507,29 @@ class TestCli(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("SCREEN-POSITIVE", out, mode)
             self.assertIn("noise=%s" % mode, out)
+
+    def test_grain_demo(self):
+        code, out = self.run_main(["--demo", "--grain", "--laser", "808"])
+        self.assertEqual(code, 0)
+        self.assertIn("grain mode, laser 808 nm", out)
+        self.assertIn("-> SCREEN-POSITIVE", out)
+
+    def test_grain_needs_normal_raman(self):
+        code, _, err = self.run_quiet(["--demo", "--grain", "--mode", "sers"])
+        self.assertEqual(code, 2)
+        self.assertIn("--grain", err)
+
+    def test_grain_file_json(self):
+        x, y = ss.synthetic_spectrum(((1086.0, 300.0), (840.0, 40.0)))
+        path = write_temp(spectrum_text(x, y))
+        try:
+            code, out = self.run_main([path, "--grain", "--json", "--exit-code"])
+            self.assertEqual(code, 0)
+            report = json.loads(out)
+            self.assertEqual(report["result"], "inconclusive")
+            self.assertEqual(result_for(report, "lead_chromate")["grain"]["failed"], ["dominance"])
+        finally:
+            os.remove(path)
 
     def test_file_json_and_exit_code(self):
         x, y = ss.synthetic_spectrum(TURMERIC + ((840.0, 40.0),))
