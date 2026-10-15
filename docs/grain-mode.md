@@ -95,7 +95,9 @@ reported as it comes out.
   lead chromate whenever another mineral band is stronger, by design.
 - Chrome yellow pigments are often solid solutions with lead sulfate (a band near 980 cm⁻¹),
   and chrome orange is basic lead chromate. Neither is in the RRUFF crocoite set. A strong
-  sulfate band could fail the dominance gate. Real pigment spectra are needed to check this.
+  sulfate band could fail the dominance gate. Real pigment spectra are needed to check this;
+  [validation-spectra.md](validation-spectra.md) surveys where those spectra live, at which
+  laser lines, and whether their licence allows reuse.
 - The rolling-ball baseline under-reads a band on a steep fluorescence slope. The dominance
   gate is therefore most reliable on spectra with a modest background.
 - RRUFF spectra are of minerals, not of spice particles. A real validation needs spectra of
