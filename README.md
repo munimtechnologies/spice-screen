@@ -13,9 +13,13 @@ polystyrene and screen a whole folder of spectra into one CSV table.
 > 11.6% of the minerals without chromium. Most of the remaining flags are real bands of other
 > minerals at 840 cm⁻¹, including white lead. See [docs/rruff-noise-rules.md](docs/rruff-noise-rules.md).
 >
-> **In development (0.6.0.dev0): grain mode** for picked yellow-orange particles. It asks for
-> lead chromate's whole band pattern, not just a band near 840 cm⁻¹. Its rule was published
-> before the library audit that tests it. See [Grain mode](#grain-mode-in-development) below.
+> **Grain mode (0.6.0.dev0), audited 2026-10-15,** for picked yellow-orange particles. It asks
+> for lead chromate's whole band pattern, not just a band near 840 cm⁻¹. Its rule was published
+> before the library audit that tests it. On the whole RRUFF library it keeps 9 of 9 crocoite
+> spectra and cuts false flags on minerals without chromium from 11.6% to 2.6%, with none on
+> common spice fillers or other lead pigments. It missed one of its four pre-registered
+> expectations: 149 of those spectra still pass, against fewer than 100 predicted. See
+> [Grain mode](#grain-mode-audited) below.
 
 ## Why
 
@@ -62,7 +66,7 @@ python spice_screen.py "market-survey/*.csv" --csv  # one row per spectrum, for 
 python spice_screen.py --calibrate polystyrene.csv  # check the instrument's shift axis
 python spice_screen.py spectrum.csv --calibrate polystyrene.csv   # screen on a corrected axis
 python spice_screen.py spectrum.csv --noise diff    # raw, unsmoothed spectra (more sensitive)
-python spice_screen.py grain.csv --grain --laser 808  # a picked particle (in development)
+python spice_screen.py grain.csv --grain --laser 808  # a picked particle (experimental)
 python spice_screen.py --list                       # the marker library and its sources
 python spice_screen.py --demo                       # a synthetic example
 python -m unittest -v                               # tests, offline
@@ -107,7 +111,7 @@ three points and reports the error at each band against the ±1.5 cm⁻¹ tolera
 fits a straight-line correction (an offset alone if only one band is found) and screens the
 sample spectra on the corrected axis. Each report records the correction it used.
 
-### Grain mode (in development)
+### Grain mode (audited)
 
 Most leaded spice holds too little pigment for powder Raman to see. Picking out the bright
 yellow-orange particles and measuring them one by one, the route FDA scientists used for
@@ -125,8 +129,12 @@ the pigment's band pattern:
 If a gate fails, the verdict is `inconclusive` and the report says which gate failed. The
 JSON report carries the measured values under `grain`. The rule, its thresholds and the
 expected audit results were published before the audit was run:
-[docs/grain-mode.md](docs/grain-mode.md). Treat this mode as experimental until that page
-has its results.
+[docs/grain-mode.md](docs/grain-mode.md). That page now has the results. Three of the four
+expectations were met; 149 spectra of minerals without chromium still pass (2.6% of 5,713),
+against fewer than 100 predicted, and they are rare arsenates, vanadates and silicates that
+are not expected in food. Under near-infrared lasers, such as the 808 nm of the Blaise kit,
+the rate is 1.9%. The mode has not been tested on real picked spice grains yet, so treat it
+as experimental.
 
 ## Marker library
 
@@ -184,8 +192,8 @@ baseline (a morphological opening ±60 cm⁻¹ wide) across 200-1100 cm⁻¹.
 
 ## Checked against real spectra
 
-Two studies ran the lead chromate marker over all 5,787 processed spectra in the RRUFF mineral
-library (Lafuente et al. 2015):
+Four studies ran the lead chromate marker over all 5,787 processed spectra in the RRUFF
+mineral library (Lafuente et al. 2015):
 
 - [docs/rruff-audit.md](docs/rruff-audit.md), on 0.4.0: 9 of 9 crocoite spectra flagged, but
   also 1,935 of 5,713 spectra of minerals without chromium. White lead (cerussite) has a weak
@@ -195,10 +203,17 @@ library (Lafuente et al. 2015):
   5,713 (11.6%). On synthetic crocoite + filler mixtures, false flags on the filler alone fall
   from 6.3% to 0.5%, and detection at 3% crocoite peak height falls from 80% to 67%. Gates on
   band shape were also tested; they helped less and are not used in the normal mode.
+- [audits/rruff-0.5.0.md](audits/rruff-0.5.0.md), a full re-audit of 0.5.0 with the original
+  audit script (2026-10-15): crocoite 9 of 9; minerals without chromium 663 of 5,713 (11.6%),
+  matching the estimate above; white lead (cerussite) still flags in 17 of 17 spectra;
+  forsterite is inconclusive in 25 of 25, never positive.
+- [audits/rruff-grain-0.6.0.md](audits/rruff-grain-0.6.0.md), the pre-registered audit of grain
+  mode (2026-10-15): crocoite 9 of 9; minerals without chromium 149 of 5,713 (2.6%); none of 227
+  common filler spectra and none of 38 other lead pigment spectra; 10 of 16 flagged spectra of
+  other chromate minerals, including phoenicochroite (basic lead chromate). Results and what
+  they mean: [docs/grain-mode.md](docs/grain-mode.md#audit).
 
-A re-audit of 0.5.0 with the original audit script, and the audit of grain mode
-([docs/grain-mode.md](docs/grain-mode.md)), are queued, and this page will be updated with
-their counts.
+The audits list RRUFF IDs and derived numbers only; the spectra are not redistributed here.
 
 ## Limits
 
@@ -227,6 +242,8 @@ their counts.
 
 ## Changes
 
+- **Audits (2026-10-16)** Results of the grain-mode audit and the full re-audit of 0.5.0, in
+  `audits/` and [docs/grain-mode.md](docs/grain-mode.md#audit). Grain mode's rule is unchanged.
 - **0.6.0.dev0 (unreleased)** Grain mode (`--grain`, `--laser`) for picked particles: apex,
   dominance and laser-dependent bending-band gates on top of the 840 cm⁻¹ check, with the
   rule pre-registered in [docs/grain-mode.md](docs/grain-mode.md) and its audit tool in
@@ -257,4 +274,4 @@ Made by MV2 of Munim, Inc. The code was produced with AI agents working in his n
 published in the open. Corrections, new markers (with sources) and real spectra shared under
 an open licence are welcome as issues or pull requests.
 
-Apache-2.0 license. Contact: munimversion2@gmail.com
+Apache-2.0 license. Contact: mv2@munimtech.com

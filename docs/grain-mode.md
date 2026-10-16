@@ -1,8 +1,9 @@
 # Grain mode: lead chromate's whole band pattern, for picked particles
 
-Status: **pre-registered, 2026-10-15.** The rule and its thresholds below were published
-before the RRUFF audit that tests them (`tools/rruff-grain/grain_audit.py`). Results will be
-added under "Audit" without changing the rule. A different rule would need a new audit.
+Status: **pre-registered 2026-10-15, audited 2026-10-15.** The rule and its thresholds below
+were published before the RRUFF audit that tests them (`tools/rruff-grain/grain_audit.py`).
+The results are under "Audit"; the rule was not changed. A different rule would need a new
+audit.
 
 ## Why a second mode
 
@@ -107,6 +108,50 @@ reported as it comes out.
 
 ## Audit
 
-Pending (queued 2026-10-15). Results will be added here.
+Run 2026-10-15 on all 5,787 processed spectra of the RRUFF Raman archive (5,785 cover
+840 cm⁻¹), with each file's own laser wavelength. Thresholds unchanged from above. Full
+tables: [audits/rruff-grain-0.6.0.md](../audits/rruff-grain-0.6.0.md). The audit's own copy of the
+rule and `grain_check()` disagreed on 0 spectra.
+
+| Expectation (written before the audit) | Result | Verdict |
+|---|---|---|
+| 1. All 9 crocoite spectra pass | 9 of 9 (3 near-infrared with the bend gate, 6 visible) | met |
+| 2. Fewer than 100 of the 663 non-chromium spectra that 0.5.0 flags pass | **149** pass (77.5% removed) | **missed** |
+| 3. Survivors mostly arsenates and vanadates; the bend gate removes some, not all, under near-infrared light | 83 arsenates + 16 vanadates = 99 of 149 (66%). Not predicted: 23 silicates (humite group, olivines such as tephroite and fayalite), 9 phosphates (mostly uranyl), 18 others. Under near-infrared light the bend gate alone or with another gate rejected 42 spectra | met, with silicates unforeseen |
+| 4. Filler alone flags at or near zero; most mixtures flag at fraction 0.5 and above | filler alone 0 of 153; fraction 0.5: 100% (near-infrared), 93% (visible) | met |
+
+What this means:
+
+- **False flags fall from 11.6% to 2.6%** of non-chromium mineral spectra (663 → 149 of
+  5,713). Under near-infrared lasers the rate is 1.9% (43 of 2,322); under visible lasers,
+  where the bend gate is not applied, it is 3.4% (105 of 3,112).
+- **No false flags on the minerals most likely to turn up in spices.** None of the 227 mineral-filler
+  spectra (chalk and other carbonates, gypsum, talc, clays, mica, sand, feldspars, baryte, titanium
+  dioxide, salt, apatite, iron oxides) and none of the 38 spectra of other lead pigments (red lead,
+  litharge, massicot, white lead, lead sulfate) pass. Organic fillers such as starch are not in RRUFF
+  and were not tested. The survivors are rare arsenate,
+  vanadate and silicate minerals that are not expected in food.
+- **Under green lasers the residue cannot be removed by any nearby threshold.** Raising
+  dominance to 0.7 still leaves 98 visible-laser survivors, because the bend gate is not used
+  there (crocoite's bending bands are weak under green light). Under near-infrared light,
+  stricter bend thresholds take the residue down to 17 (dominance 0.7, bend 0.3) while keeping
+  all 3 near-infrared crocoite spectra. The Blaise spectrometer uses 808 nm, the favourable case.
+  The published thresholds stay as they are; a stricter rule would need its own audit.
+- **Grain mode recognises chromate minerals in general.** 10 of the 16 spectra of other
+  chromium minerals that 0.5.0 flags also pass, including phoenicochroite, Pb₂O(CrO₄). That is
+  the mineral form of basic lead chromate, the compound in chrome orange. This answers in part
+  the limit noted above that chrome orange is not in the crocoite set (one 532 nm spectrum only).
+- **The cost is sensitivity in mixtures, as designed.** With crocoite mixed into filler at a
+  peak-height fraction of 0.3, grain mode flags 12% of near-infrared and 7% of visible mixtures,
+  against 100% and 92% for 0.5.0. Use grain mode on picked particles, and the normal screen
+  on powder.
+
+Limits of this audit: RRUFF holds mineral spectra, not spice grains. There are only 9 crocoite
+spectra (3 near-infrared), and the mixtures are synthetic peak-height blends. Validating
+grain mode still needs spectra of picked spice particles, paired with laboratory lead and
+chromium results.
+
+RRUFF data: Lafuente et al. (2015), The power of databases: the RRUFF project. Spectra are not
+redistributed here.
 
 Made by MV2 of Munim, Inc. with AI agents working in his name. Text CC BY 4.0, code Apache-2.0.
