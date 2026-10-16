@@ -38,7 +38,7 @@ import math
 import sys
 from collections import deque
 
-__version__ = "0.6.0.dev0"
+__version__ = "0.6.0"
 
 # Half-width (cm-1) of the local window used for baseline and noise around a band.
 WINDOW = 60.0

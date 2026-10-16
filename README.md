@@ -13,7 +13,7 @@ polystyrene and screen a whole folder of spectra into one CSV table.
 > 11.6% of the minerals without chromium. Most of the remaining flags are real bands of other
 > minerals at 840 cm⁻¹, including white lead. See [docs/rruff-noise-rules.md](docs/rruff-noise-rules.md).
 >
-> **Grain mode (0.6.0.dev0), audited 2026-10-15,** for picked yellow-orange particles. It asks
+> **0.6.0 (2026-10-16): grain mode, audited 2026-10-15,** for picked yellow-orange particles. It asks
 > for lead chromate's whole band pattern, not just a band near 840 cm⁻¹. Its rule was published
 > before the library audit that tests it. On the whole RRUFF library it keeps 9 of 9 crocoite
 > spectra and cuts false flags on minerals without chromium from 11.6% to 2.6%, with none on
@@ -242,9 +242,12 @@ The audits list RRUFF IDs and derived numbers only; the spectra are not redistri
 
 ## Changes
 
+- **0.6.0 (2026-10-16)** Release of grain mode as audited. The code is byte for byte the
+  audited 0.6.0.dev0 file (sha256 435e387ee904...) with only the version line changed; all 61
+  offline tests passed on the released file in a sealed run. Grain mode's rule is unchanged.
 - **Audits (2026-10-16)** Results of the grain-mode audit and the full re-audit of 0.5.0, in
   `audits/` and [docs/grain-mode.md](docs/grain-mode.md#audit). Grain mode's rule is unchanged.
-- **0.6.0.dev0 (unreleased)** Grain mode (`--grain`, `--laser`) for picked particles: apex,
+- **0.6.0.dev0** Grain mode (`--grain`, `--laser`) for picked particles: apex,
   dominance and laser-dependent bending-band gates on top of the 840 cm⁻¹ check, with the
   rule pre-registered in [docs/grain-mode.md](docs/grain-mode.md) and its audit tool in
   `tools/rruff-grain/`. Normal mode is unchanged. `tools/rruff-audit/audit_local.py`, listed
